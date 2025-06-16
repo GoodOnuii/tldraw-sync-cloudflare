@@ -1,4 +1,4 @@
-name = "canvas"
+name = "canvas-dev"
 main = "worker/worker.ts"
 compatibility_date = "2024-07-01"
 
@@ -20,9 +20,9 @@ new_sqlite_classes = ["TldrawDurableObject"]
 # We store rooms and asset uploads in an R2 bucket
 [[r2_buckets]]
 binding = 'TLDRAW_BUCKET'
-bucket_name = 'canvas-content'
-preview_bucket_name = 'canvas-content-preview'
+bucket_name = 'canvas-dev-content'
+preview_bucket_name = 'canvas-dev-content-preview'
 
 # top level environment
 [vars]
-CANVAS_JWT_PUBLIC_KEY = {"kty":"EC","x":"wU65bVig1FMvyzdXlgZ1eCjDUw61FNx0iQWZlj-X-1M","y":"F1LL2SkwARbptMhJnTBoLzcsuEHq67WgCysypGkt2b8","crv":"P-256"}
+CANVAS_JWT_PUBLIC_KEY = {"kty" = "EC", "x" = "QWADuM-2EQ_CRQLYAdbTWiASAvNNDcaxDL2CcEa5eT0","y" = "juQw9dmrlb8JuefeDcWYMrAUHEISm82e1i4x5XOWJOY","crv" = "P-256"}

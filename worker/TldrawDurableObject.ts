@@ -8,6 +8,7 @@ import {
 import { AutoRouter, IRequest, error } from 'itty-router'
 import throttle from 'lodash.throttle'
 import { Environment } from './types'
+import { JWK, jwtVerify } from 'jose'
 
 // add custom shapes and bindings here if needed:
 const schema = createTLSchema({
@@ -28,11 +29,14 @@ export class TldrawDurableObject {
 	// load it once.
 	private roomPromise: Promise<TLSocketRoom<TLRecord, void>> | null = null
 
+	private publicKey: JWK
+	
 	constructor(
 		private readonly ctx: DurableObjectState,
 		env: Environment
 	) {
 		this.r2 = env.TLDRAW_BUCKET
+		this.publicKey = env.CANVAS_JWT_PUBLIC_KEY
 
 		ctx.blockConcurrencyWhile(async () => {
 			this.roomId = ((await this.ctx.storage.get('roomId')) ?? null) as string | null
@@ -66,6 +70,29 @@ export class TldrawDurableObject {
 		// extract query params from request
 		const sessionId = request.query.sessionId as string
 		if (!sessionId) return error(400, 'Missing sessionId')
+
+		const roomId = this.roomId
+		if (!roomId) throw new Error('Missing roomId')
+
+		const token = request.query.token as string
+		if (!token) return error(400, 'Missing token')
+
+		try {
+			const { payload } = await jwtVerify(token, this.publicKey, {
+				issuer: 'canvas.seoltab.com',
+				audience: 'canvas.seoltab.com',
+				algorithms: ['ES256']
+			})
+
+			if (payload.root) {
+				// Skip roomId check for root users
+			} else if (payload.roomId !== roomId) {
+				return error(401, 'Invalid roomId')
+			}
+		} catch (err) {
+			console.error('JWT verification failed:', err)
+			return error(401, 'Invalid token')
+		}
 
 		// Create the websocket pair for the client
 		const { 0: clientWebSocket, 1: serverWebSocket } = new WebSocketPair()
@@ -112,7 +139,7 @@ export class TldrawDurableObject {
 	}
 
 	// we throttle persistance so it only happens every 10 seconds
-	schedulePersistToR2 = throttle(async () => {
+	schedulePersistToR2: ReturnType<typeof throttle> = throttle(async () => {
 		if (!this.roomPromise || !this.roomId) return
 		const room = await this.getRoom()
 

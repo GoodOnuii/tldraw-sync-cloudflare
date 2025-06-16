@@ -12,10 +12,12 @@
 	"scripts": {
 		"dev": "concurrently --kill-others --names client,worker --prefix-colors blue,red yarn:dev:client yarn:dev:worker",
 		"dev:client": "vite",
-		"dev:worker": "wrangler dev",
+		"dev:worker": "wrangler dev --config ./wrangler.dev.toml",
+		"dev:deploy": "wrangler deploy --config ./wrangler.dev.toml",
 		"build": "tsc && vite build",
 		"lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-		"preview": "vite preview"
+		"preview": "vite preview",
+		"prod:deploy": "wrangler deploy --config ./wrangler.toml"
 	},
 	"dependencies": {
 		"@cloudflare/types": "^6.29.0",
@@ -24,6 +26,7 @@
 		"@tldraw/tlschema": "3.13.1",
 		"cloudflare-workers-unfurl": "^0.0.7",
 		"itty-router": "^5.0.17",
+		"jose": "^6.0.11",
 		"lodash.throttle": "^4.1.1",
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",
@@ -32,6 +35,7 @@
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20250510.0",
 		"@types/lodash.throttle": "^4",
+		"@types/node": "^22.15.21",
 		"@types/react": "^18.3.18",
 		"@types/react-dom": "^18.3.5",
 		"@typescript-eslint/eslint-plugin": "^8.11.0",
