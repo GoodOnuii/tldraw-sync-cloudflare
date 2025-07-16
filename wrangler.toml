@@ -22,7 +22,3 @@ new_sqlite_classes = ["TldrawDurableObject"]
 binding = 'TLDRAW_BUCKET'
 bucket_name = 'canvas-content'
 preview_bucket_name = 'canvas-content-preview'
-
-# top level environment
-[vars]
-CANVAS_JWT_PUBLIC_KEY = {"kty":"EC","x":"wU65bVig1FMvyzdXlgZ1eCjDUw61FNx0iQWZlj-X-1M","y":"F1LL2SkwARbptMhJnTBoLzcsuEHq67WgCysypGkt2b8","crv":"P-256"}
