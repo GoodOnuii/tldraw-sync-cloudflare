@@ -3,7 +3,7 @@ import { Environment } from './types'
 
 // assets are stored in the bucket under the /uploads path
 function getAssetObjectName(uploadId: string) {
-	return `uploads/${uploadId.replace(/[^a-zA-Z0-9\_\-]+/g, '_')}`
+	return `upload/${uploadId.replace(/[^a-zA-Z0-9\_\-]+/g, '_')}`
 }
 
 // when a user uploads an asset, we store it in the bucket. we only allow image and video assets.
