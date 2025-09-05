@@ -215,7 +215,7 @@ export class TldrawDurableObject {
         this.LIVEKIT_API_SECRET
       ).verify(token);
 
-      if (payload.sub?.split("/").shift() !== roomId.split("/").shift()) {
+      if (payload.attributes?.nodeId?.split("/").shift() !== roomId.split("/").shift()) {
         console.error("Invalid roomId");
         return error(401, "Invalid roomId");
       }
