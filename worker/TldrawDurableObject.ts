@@ -8,7 +8,7 @@ import {
 import { AutoRouter, IRequest, cors, error } from "itty-router";
 import throttle from "lodash.throttle";
 import { Environment } from "./types";
-import { TokenVerifier } from "livekit-server-sdk";
+import { ClaimGrants, TokenVerifier } from "livekit-server-sdk";
 import { UnknownRecord } from "tldraw";
 
 // add custom shapes and bindings here if needed:
@@ -54,7 +54,6 @@ export class TldrawDurableObject {
       return error(e);
     },
   })
-    // when we get a connection request, we stash the room id if needed and handle the connection
     .get("/connect/:roomId", async (request) => {
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
@@ -85,6 +84,26 @@ export class TldrawDurableObject {
         });
       }
       return this.handleStudyUpdate(request);
+    })
+    .post("/save/study/:userId/:hash", async (request) => {
+      if (!this.roomId) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          const roomId = `${request.params.userId}/${request.params.hash}`;
+          await this.ctx.storage.put("roomId", roomId);
+          this.roomId = roomId;
+        });
+      }
+      return this.handleStudySave(request);
+    })
+    .post("/disconnect/study/:userId/:hash", async (request) => {
+      if (!this.roomId) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          const roomId = `${request.params.userId}/${request.params.hash}`;
+          await this.ctx.storage.put("roomId", roomId);
+          this.roomId = roomId;
+        });
+      }
+      return this.handleStudyDisconnect(request);
     });
 
   // `fetch` is the entry point for all requests to the Durable Object
@@ -263,6 +282,57 @@ export class TldrawDurableObject {
     room.updateStore((store) => {
       store.delete("page:page");
     });
+    return new Response(null, { status: 200 });
+  }
+
+  async handleStudySave(request: IRequest): Promise<Response> {
+    if (!this.roomId) throw new Error("Missing room");
+    const room = await this.getStudyRoom();
+
+    const currentSnapshot = room.getCurrentSnapshot();
+    const pageDocuments: Record<
+      string,
+      { lastChangedClock: number; state: UnknownRecord }[]
+    > = {};
+    for (const document of currentSnapshot.documents) {
+      const record = document.state as any;
+      const id =
+        record.typeName === "page"
+          ? record.id.split(":")[1]
+          : record.parentId
+          ? record.parentId.split(":")[1]
+          : record.typeName === "asset"
+          ? record.id.split(":")[1]
+          : null;
+      if (id === null) continue;
+      if (pageDocuments[id]) pageDocuments[id].push(document);
+      else pageDocuments[id] = [document];
+    }
+
+    // convert the room to JSON and upload it to R2
+    for await (const [id, documents] of Object.entries(pageDocuments)) {
+      const snapshot = JSON.stringify(documents);
+      await this.r2.put(
+        `study/${this.roomId.split("/").shift()}/${id}`,
+        snapshot
+      );
+    }
+
+    return new Response(null, { status: 200 });
+  }
+
+  async handleStudyDisconnect(request: IRequest): Promise<Response> {
+    const sessionId = request.query.sessionId as string;
+    if (!sessionId) {
+      console.error("Missing sessionId");
+      return error(400, "Missing sessionId");
+    }
+
+    const roomId = this.roomId;
+    if (!roomId) throw new Error("Missing roomId");
+
+    const room = await this.getStudyRoom();
+    room.handleSocketClose(sessionId);
     return new Response(null, { status: 200 });
   }
 
