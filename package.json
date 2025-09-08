@@ -20,7 +20,9 @@
 		"prod:deploy": "wrangler deploy --config ./wrangler.toml"
 	},
 	"dependencies": {
+		"@cf-wasm/photon": "^0.1.31",
 		"@cloudflare/types": "^6.29.0",
+		"@tldraw/indices": "2.0.0-canary.e43b0103fdf5",
 		"@tldraw/sync": "3.15.4",
 		"@tldraw/sync-core": "3.15.4",
 		"@tldraw/tlschema": "3.15.4",

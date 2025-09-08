@@ -8,9 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@cf-wasm/photon':
+        specifier: ^0.1.31
+        version: 0.1.31
       '@cloudflare/types':
         specifier: ^6.29.0
         version: 6.29.1(react@18.3.1)
+      '@tldraw/indices':
+        specifier: 2.0.0-canary.e43b0103fdf5
+        version: 2.0.0-canary.e43b0103fdf5
       '@tldraw/sync':
         specifier: 3.15.4
         version: 3.15.4(@types/react-dom@18.3.7(@types/react@18.3.22))(@types/react@18.3.22)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -95,6 +101,12 @@ packages:
 
   '@bufbuild/protobuf@1.10.1':
     resolution: {integrity: sha512-wJ8ReQbHxsAfXhrf9ixl0aYbZorRuOWpBNzm8pL8ftmSxQx/wnJD5Eg861NwJU/czy2VXFIebCeZnZrI9rktIQ==}
+
+  '@cf-wasm/internals@0.0.3':
+    resolution: {integrity: sha512-v6PmiQnJIrVvL2IdPg5aCqARSKw/U1JvFsms2cCt3Szx3/3EvtVVhN9MALCh6kZ2CV2fvzs3tmiYezRQ6JyqcQ==}
+
+  '@cf-wasm/photon@0.1.31':
+    resolution: {integrity: sha512-czB1kvK8L1oKsBcQxNhWn5JyIlXrXF+Fd61kQSZSwxi+ol7ikqf9SPnEVQ//C3MW9bzp62eCVMetoB5+9iMsvw==}
 
   '@cloudflare/intl-types@1.5.7':
     resolution: {integrity: sha512-5p+NqAoM3rOMsZsAS6RMWvClhuxWA3YqRkfIxkTcc6uYNsays90GuyzdXmN/v+T7UiSkmzRa7Atu75tD/245MQ==}
@@ -1679,6 +1691,9 @@ packages:
       react: ^18.2.0 || ^19.0.0
       react-dom: ^18.2.0 || ^19.0.0
 
+  '@tldraw/indices@2.0.0-canary.e43b0103fdf5':
+    resolution: {integrity: sha512-FDbIzsiLFWPrJVKn4XcO/kXZ4LIG2iKu/16nJ1mNJgdqXgYahNPs0Ufp46dZzJK3mAAZGNEth8S9TvLvmlUZzA==}
+
   '@tldraw/state-react@3.15.4':
     resolution: {integrity: sha512-teqbNFTjJlTss2VxtY1OwGUSkrdUBifNy1+SVgj7OviZJgxDV2RIV8iQ1qIsXy0/4IHTRw5bshh4KObCZPAd0w==}
     peerDependencies:
@@ -2773,6 +2788,12 @@ packages:
 snapshots:
 
   '@bufbuild/protobuf@1.10.1': {}
+
+  '@cf-wasm/internals@0.0.3': {}
+
+  '@cf-wasm/photon@0.1.31':
+    dependencies:
+      '@cf-wasm/internals': 0.0.3
 
   '@cloudflare/intl-types@1.5.7(react@18.3.1)':
     dependencies:
@@ -4194,6 +4215,8 @@ snapshots:
       is-plain-object: 5.0.0
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
+
+  '@tldraw/indices@2.0.0-canary.e43b0103fdf5': {}
 
   '@tldraw/state-react@3.15.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:

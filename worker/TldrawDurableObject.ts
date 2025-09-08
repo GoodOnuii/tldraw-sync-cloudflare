@@ -10,6 +10,8 @@ import throttle from "lodash.throttle";
 import { Environment } from "./types";
 import { ClaimGrants, TokenVerifier } from "livekit-server-sdk";
 import { UnknownRecord } from "tldraw";
+import { sortByIndex } from "@tldraw/indices";
+import { PhotonImage } from "@cf-wasm/photon";
 
 // add custom shapes and bindings here if needed:
 const schema = createTLSchema({
@@ -62,6 +64,33 @@ export class TldrawDurableObject {
         });
       }
       return this.handleConnect(request);
+    })
+    .get("/rooms/:roomId/pages", async (request) => {
+      if (!this.roomId) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          await this.ctx.storage.put("roomId", request.params.roomId);
+          this.roomId = request.params.roomId;
+        });
+      }
+      return this.handleGetPages(request);
+    })
+    .put("/rooms/:roomId/pages", async (request) => {
+      if (!this.roomId) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          await this.ctx.storage.put("roomId", request.params.roomId);
+          this.roomId = request.params.roomId;
+        });
+      }
+      return this.handlePutPages(request);
+    })
+    .delete("/rooms/:roomId/pages", async (request) => {
+      if (!this.roomId) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          await this.ctx.storage.put("roomId", request.params.roomId);
+          this.roomId = request.params.roomId;
+        });
+      }
+      return this.handleDeletePages(request);
     })
     .get("/connect/study/:userId/:hash", async (request) => {
       if (!this.roomId || !this.pages) {
@@ -161,6 +190,303 @@ export class TldrawDurableObject {
     return new Response(null, { status: 101, webSocket: clientWebSocket });
   }
 
+  async handleGetPages(request: IRequest): Promise<Response> {
+    const roomId = this.roomId;
+    if (!roomId) {
+      console.error("Missing roomId");
+      return error(400, "Missing roomId");
+    }
+
+    const token = request.headers.get("Authorization")?.split(" ")[1];
+    if (!token) {
+      console.error("Missing token");
+      return error(400, "Missing token");
+    }
+
+    try {
+      const payload = await new TokenVerifier(
+        this.LIVEKIT_API_KEY,
+        this.LIVEKIT_API_SECRET
+      ).verify(token);
+
+      if (payload.video?.room !== roomId) {
+        console.error("Invalid roomId");
+        return error(401, "Invalid roomId");
+      }
+    } catch (err) {
+      console.error("Invalid token", err);
+      return error(401, "Invalid token");
+    }
+
+    const room = await this.getRoom();
+    const snapshot = room.getCurrentSnapshot();
+    const pages = snapshot.documents
+      .filter((document) => document.state.typeName === "page")
+      .map((document) => ({
+        ...document,
+        id: document.state.id.split(":")[1],
+      }));
+    const sortedPages = pages.sort((a: any, b: any) =>
+      sortByIndex(a.state, b.state)
+    );
+    return new Response(JSON.stringify({ pages: sortedPages }), {
+      status: 200,
+    });
+  }
+
+  async handleCreatePages(request: IRequest): Promise<Response> {
+    const roomId = this.roomId;
+    if (!roomId) {
+      console.error("Missing roomId");
+      return error(400, "Missing roomId");
+    }
+
+    const token = request.headers.get("Authorization")?.split(" ")[1];
+    if (!token) {
+      console.error("Missing token");
+      return error(400, "Missing token");
+    }
+
+    try {
+      const payload = await new TokenVerifier(
+        this.LIVEKIT_API_KEY,
+        this.LIVEKIT_API_SECRET
+      ).verify(token);
+
+      if (payload.video?.room !== roomId) {
+        console.error("Invalid roomId");
+        return error(401, "Invalid roomId");
+      }
+    } catch (err) {
+      console.error("Invalid token", err);
+      return error(401, "Invalid token");
+    }
+
+    const room = await this.getRoom();
+    const snapshot = room.getCurrentSnapshot();
+    const pages = snapshot.documents
+      .filter((document) => document.state.typeName === "page")
+      .map((document) => ({
+        ...document,
+        id: document.state.id.split(":")[1],
+      }));
+    return new Response(JSON.stringify({ pages: pages }), { status: 200 });
+  }
+
+  async handlePutPages(request: IRequest): Promise<Response> {
+    const roomId = this.roomId;
+    if (!roomId) {
+      console.error("Missing roomId");
+      return error(400, "Missing roomId");
+    }
+
+    const body = await request.json<any>();
+    if (!body || !Array.isArray(body)) {
+      console.error("Missing pageId");
+      return error(400, "Missing pageId");
+    }
+
+    const token = request.headers.get("Authorization")?.split(" ")[1];
+    if (!token) {
+      console.error("Missing token");
+      return error(400, "Missing token");
+    }
+
+    let payload: ClaimGrants;
+    try {
+      payload = await new TokenVerifier(
+        this.LIVEKIT_API_KEY,
+        this.LIVEKIT_API_SECRET
+      ).verify(token);
+
+      if (payload.video?.room !== roomId) {
+        console.error("Invalid roomId");
+        return error(401, "Invalid roomId");
+      }
+    } catch (err) {
+      console.error("Invalid token", err);
+      return error(401, "Invalid token");
+    }
+
+    const nodeId = payload.attributes?.nodeId;
+    if (!nodeId) {
+      console.error("Missing nodeId");
+      return error(400, "Missing nodeId");
+    }
+
+    let pageRecords:
+      | {
+          lastChangedClock: number;
+          state: any;
+        }[] = [];
+    for await (const page of body) {
+      const pageFromBucket = await this.r2.get(
+        `study/${nodeId}/${page.id}.json`
+      );
+      let pageDocuments: {
+        lastChangedClock: number;
+        state: any;
+      }[] = [];
+      if (pageFromBucket) {
+        pageDocuments = await pageFromBucket.json<RoomSnapshot["documents"]>();
+      } else if (page.image) {
+        // fetch image and get the Uint8Array instance
+        const inputBytes = await fetch(page.image)
+          .then((res) => res.arrayBuffer())
+          .then((buffer) => new Uint8Array(buffer));
+
+        // create a PhotonImage instance
+        const inputImage = PhotonImage.new_from_byteslice(inputBytes);
+        const w = inputImage.get_width() * 2;
+        const h = inputImage.get_height() * 2;
+        const base64 = inputImage.get_base64();
+        inputImage.free();
+        const match = base64.match(/^data:([^;]+)/)
+        if (!match) continue;
+        const mimeType = match[1];
+        pageDocuments = [
+          {
+            state: {
+              meta: {
+                image: page.image,
+              },
+              id: `page:${page.id}`,
+              name: `${page.id}`,
+              index: "",
+              typeName: "page",
+            },
+            lastChangedClock: 0,
+          },
+          {
+            state: {
+              id: `asset:${page.id}`,
+              type: "image",
+              typeName: "asset",
+              props: {
+                name: `${page.id}`,
+                src: `${page.image}`,
+                w: w,
+                h: h,
+                mimeType: mimeType,
+                isAnimated: false,
+              },
+              meta: {},
+            },
+            lastChangedClock: 0,
+          },
+          {
+            state: {
+              x: (w / 2) * -1,
+              y: (h / 2) * -1,
+              rotation: 0,
+              isLocked: true,
+              opacity: 1,
+              meta: {},
+              id: `shape:${page.id}`,
+              type: "image",
+              typeName: "shape",
+              index: "a1",
+              parentId: `page:${page.id}`,
+              props: {
+                w: w,
+                h: h,
+                assetId: `asset:${page.id}`,
+                playing: true,
+                url: "",
+                crop: null,
+                flipX: false,
+                flipY: false,
+                altText: "",
+              },
+            },
+            lastChangedClock: 0,
+          },
+        ];
+      }
+
+      const room = await this.getRoom();
+      room.updateStore((store) => {
+        for (const document of pageDocuments) {
+          if (document.state.typeName === "page") pageRecords.push(document);
+          store.put(document.state as TLRecord);
+        }
+      });
+    }
+
+    const pages = pageRecords.map((document) => ({
+      ...document,
+      id: document.state.id.split(":")[1],
+    }));
+
+    return new Response(JSON.stringify({ pages }), {
+      status: 200,
+    });
+  }
+
+  async handleDeletePages(request: IRequest): Promise<Response> {
+    const roomId = this.roomId;
+    if (!roomId) {
+      console.error("Missing roomId");
+      return error(400, "Missing roomId");
+    }
+
+    const body = await request.json<any>();
+    if (!body || !Array.isArray(body)) {
+      console.error("Missing body");
+      return error(400, "Missing body");
+    }
+
+    const token = request.headers.get("Authorization")?.split(" ")[1];
+    if (!token) {
+      console.error("Missing token");
+      return error(400, "Missing token");
+    }
+
+    let payload: ClaimGrants;
+    try {
+      payload = await new TokenVerifier(
+        this.LIVEKIT_API_KEY,
+        this.LIVEKIT_API_SECRET
+      ).verify(token);
+
+      if (payload.video?.room !== roomId) {
+        console.error("Invalid roomId");
+        return error(401, "Invalid roomId");
+      }
+    } catch (err) {
+      console.error("Invalid token", err);
+      return error(401, "Invalid token");
+    }
+
+    const pageIds = body.map((page) => page.id);
+    let pageRecords: {
+      lastChangedClock: number;
+      state: UnknownRecord;
+    }[] = [];
+    const room = await this.getRoom();
+    const snapshot = room.getCurrentSnapshot();
+    room.updateStore((store) => {
+      for (const document of snapshot.documents) {
+        if (
+          document.state.typeName === "page" &&
+          pageIds.includes(document.state.id.split(":")[1])
+        ) {
+          pageRecords.push(document);
+          store.delete(document.state.id);
+        }
+      }
+    });
+
+    const pages = pageRecords.map((document) => ({
+      ...document,
+      id: document.state.id.split(":")[1],
+    }));
+
+    return new Response(JSON.stringify({ pages }), {
+      status: 200,
+    });
+  }
+
   getRoom() {
     const roomId = this.roomId;
     if (!roomId) throw new Error("Missing roomId");
@@ -168,11 +494,11 @@ export class TldrawDurableObject {
     if (!this.roomPromise) {
       this.roomPromise = (async () => {
         // fetch the room from R2
-        const roomFromBucket = await this.r2.get(`room/${roomId}`);
+        const roomFromBucket = await this.r2.get(`room/${roomId}.json`);
 
         // if it doesn't exist, we'll just create a new empty room
         const initialSnapshot = roomFromBucket
-          ? ((await roomFromBucket.json()) as RoomSnapshot)
+          ? await roomFromBucket.json<RoomSnapshot>()
           : { clock: 0, documents: [] };
 
         // create a new TLSocketRoom. This handles all the sync protocol & websocket connections.
@@ -198,7 +524,7 @@ export class TldrawDurableObject {
 
     // convert the room to JSON and upload it to R2
     const snapshot = JSON.stringify(room.getCurrentSnapshot());
-    await this.r2.put(`room/${this.roomId}`, snapshot);
+    await this.r2.put(`room/${this.roomId}.json`, snapshot);
   }, 10_000);
 
   // what happens when someone tries to connect to this room?
@@ -234,7 +560,10 @@ export class TldrawDurableObject {
         this.LIVEKIT_API_SECRET
       ).verify(token);
 
-      if (payload.attributes?.nodeId?.split("/").shift() !== roomId.split("/").shift()) {
+      if (
+        payload.attributes?.nodeId?.split("/").shift() !==
+        roomId.split("/").shift()
+      ) {
         console.error("Invalid roomId");
         return error(401, "Invalid roomId");
       }
@@ -249,6 +578,9 @@ export class TldrawDurableObject {
 
     // load the room, or retrieve it if it's already loaded
     const room = await this.getStudyRoom();
+    room.updateStore((store) => {
+      store.delete("page:page");
+    });
 
     // connect the client to the room
     room.handleSocketConnect({ sessionId, socket: serverWebSocket });
@@ -268,10 +600,10 @@ export class TldrawDurableObject {
     const room = await this.getStudyRoom();
     for await (const id of pageIds) {
       const pageFromBucket = await this.r2.get(
-        `study/${roomId.split("/").shift()}/${id}`
+        `study/${roomId.split("/").shift()}/${id}.json`
       );
       const pageDocuments = pageFromBucket
-        ? ((await pageFromBucket.json()) as RoomSnapshot["documents"])
+        ? await pageFromBucket.json<RoomSnapshot["documents"]>()
         : [];
       room.updateStore((store) => {
         for (const document of pageDocuments) {
@@ -313,7 +645,7 @@ export class TldrawDurableObject {
     for await (const [id, documents] of Object.entries(pageDocuments)) {
       const snapshot = JSON.stringify(documents);
       await this.r2.put(
-        `study/${this.roomId.split("/").shift()}/${id}`,
+        `study/${this.roomId.split("/").shift()}/${id}.json`,
         snapshot
       );
     }
@@ -350,10 +682,10 @@ export class TldrawDurableObject {
         const pageDocuments: RoomSnapshot["documents"] = [];
         for (const id of pageIds) {
           const pageFromBucket = await this.r2.get(
-            `study/${roomId.split("/").shift()}/${id}`
+            `study/${roomId.split("/").shift()}/${id}.json`
           );
           const documents = pageFromBucket
-            ? ((await pageFromBucket.json()) as RoomSnapshot["documents"])
+            ? await pageFromBucket.json<RoomSnapshot["documents"]>()
             : [];
           pageDocuments.push(...documents);
         }
@@ -409,7 +741,7 @@ export class TldrawDurableObject {
     for (const [id, documents] of Object.entries(pageDocuments)) {
       const snapshot = JSON.stringify(documents);
       await this.r2.put(
-        `study/${this.roomId.split("/").shift()}/${id}`,
+        `study/${this.roomId.split("/").shift()}/${id}.json`,
         snapshot
       );
     }
