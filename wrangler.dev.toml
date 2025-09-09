@@ -1,7 +1,7 @@
 name = "canvas-dev"
 main = "worker/worker.ts"
 compatibility_flags = [ "nodejs_compat" ]
-compatibility_date = "2024-07-01"
+compatibility_date = "2025-05-08"
 route = "canvas-dev.seoltab.co/*"
 
 [observability]
@@ -26,7 +26,7 @@ new_sqlite_classes = ["TldrawDurableObject"]
 [[r2_buckets]]
 binding = 'TLDRAW_BUCKET'
 bucket_name = 'canvas-dev-content'
-preview_bucket_name = 'canvas-dev-content-preview'
+preview_bucket_name = 'canvas-dev-content'
 
 [vars]
 LIVEKIT_API_KEY="cf6e63e2-1067-4708-9225-ba705b235f25"
