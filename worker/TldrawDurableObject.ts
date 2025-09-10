@@ -338,13 +338,17 @@ export class TldrawDurableObject {
     );
 
     const pages: RoomSnapshot["documents"] = [];
+    const pageFromDocuments: {
+      lastChangedClock: number;
+      state: any;
+    }[] = [];
     const errors: {
       message: string;
-      extensions: { id: string; image: string };
+      extensions: { id: string; image: string; thumbnail?: string };
     }[] = [];
-    for await (const page of body.input.pages) {
-      const index = aboveIndices.shift();
-      if (!index) continue;
+    const pagePromises = body.input.pages.map(async (page: { id: string; image?: string; thumbnail?: string }, pageIndex: number) => {
+      const index = aboveIndices[pageIndex];
+      if (!index) return;
 
       // const pageDocument = pageDocuments.find(
       //   (document) => document.state.id === `page:${page.id}`
@@ -352,21 +356,17 @@ export class TldrawDurableObject {
       // if (pageDocument) {
       //   const state = pageDocument.state as any;
       //   state.index = index;
-      //   continue;
+      //   return;
       // }
 
       const pageFromBucket = await this.r2.get(
         `study/${nodeId}/${page.id}.json`
       );
-      let pageFromDocuments: {
-        lastChangedClock: number;
-        state: any;
-      }[] = [];
       if (pageFromBucket) {
         const documents = await pageFromBucket.json<
           RoomSnapshot["documents"]
         >();
-        pageFromDocuments = documents.map((document) => {
+        return documents.map((document) => {
           const state = document.state as any;
           if (state.typeName === "page") state.index = index;
           return document;
@@ -378,8 +378,7 @@ export class TldrawDurableObject {
         // if (pageDocument) {
         //   const state = pageDocument.state as any;
         //   state.index = index;
-        //   pageFromDocuments = [pageDocument];
-        //   continue;
+        //   return [pageDocument];
         // }
 
         try {
@@ -394,13 +393,13 @@ export class TldrawDurableObject {
           const base64 = inputImage.get_base64();
           inputImage.free();
           const match = base64.match(/^data:([^;]+)/);
-          if (!match) continue;
+          if (!match) return;
           const mimeType = match[1];
-          pageFromDocuments = [
+          return [
             {
               state: {
                 meta: {
-                  image: page.image,
+                  thumbnail: page.thumbnail ?? page.image,
                 },
                 id: `page:${page.id}`,
                 name: `${page.id}`,
@@ -452,24 +451,37 @@ export class TldrawDurableObject {
                 },
               },
               lastChangedClock: 0,
-            },
+            }
           ];
         } catch (err) {
-          errors.push({
+          throw {
             message: `${err}`,
-            extensions: { id: page.id, image: page.image },
-          });
-          continue;
+            extensions: {
+              id: page.id,
+              image: page.image,
+              thumbnail: page.thumbnail,
+            },
+          };
         }
       }
+    });
 
-      room.updateStore((store) => {
-        for (const document of pageFromDocuments) {
-          store.put(document.state as TLRecord);
-          if (document.state.typeName === "page") pages.push(document);
-        }
-      });
-    }
+    const results = await Promise.allSettled(pagePromises);
+    
+    results.forEach((result) => {
+      if (result.status === 'fulfilled' && result.value) {
+        pageFromDocuments.push(...result.value);
+      } else if (result.status === 'rejected') {
+        errors.push(result.reason);
+      }
+    });
+
+    await room.updateStore((store) => {
+      for (const document of pageFromDocuments) {
+        store.put(document.state as TLRecord);
+        if (document.state.typeName === "page") pages.push(document);
+      }
+    });
 
     const sortedPages = pages.map((document) => ({
       ...document,
@@ -533,7 +545,7 @@ export class TldrawDurableObject {
     }[] = [];
     const room = await this.getRoom();
     const snapshot = room.getCurrentSnapshot();
-    room.updateStore((store) => {
+    await room.updateStore((store) => {
       for (const document of snapshot.documents) {
         if (
           document.state.typeName === "page" &&
