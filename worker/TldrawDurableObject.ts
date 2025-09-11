@@ -91,7 +91,7 @@ export class TldrawDurableObject {
       }
       return this.handleDeletePages(request);
     })
-    .get("/connect/study/:userId/:hash", async (request) => {
+    .get("/connect/:userId/:hash", async (request) => {
       if (!this.roomId || !this.pages) {
         await this.ctx.blockConcurrencyWhile(async () => {
           const roomId = `${request.params.userId}/${request.params.hash}`;
@@ -103,7 +103,19 @@ export class TldrawDurableObject {
       }
       return this.handleStudyConnect(request);
     })
-    .post("/update/study/:userId/:hash", async (request) => {
+    .get("/study/:userId/:hash/pages", async (request) => {
+      if (!this.roomId) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          const roomId = `${request.params.userId}/${request.params.hash}`;
+          const pages = request.query.pages;
+          await this.ctx.storage.put("roomId", roomId);
+          this.roomId = roomId;
+          this.pages = `${pages}`;
+        });
+      }
+      return this.handleStudyGetPages(request);
+    })
+    .put("/study/:userId/:hash", async (request) => {
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
           const roomId = `${request.params.userId}/${request.params.hash}`;
@@ -113,7 +125,7 @@ export class TldrawDurableObject {
       }
       return this.handleStudyUpdate(request);
     })
-    .post("/save/study/:userId/:hash", async (request) => {
+    .post("/study/:userId/:hash", async (request) => {
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
           const roomId = `${request.params.userId}/${request.params.hash}`;
@@ -123,7 +135,7 @@ export class TldrawDurableObject {
       }
       return this.handleStudySave(request);
     })
-    .post("/disconnect/study/:userId/:hash", async (request) => {
+    .post("/disconnect/:userId/:hash", async (request) => {
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
           const roomId = `${request.params.userId}/${request.params.hash}`;
@@ -667,6 +679,59 @@ export class TldrawDurableObject {
 
     // return the websocket connection to the client
     return new Response(null, { status: 101, webSocket: clientWebSocket });
+  }
+
+  async handleStudyGetPages(request: IRequest): Promise<Response> {
+    const roomId = this.roomId;
+    if (!roomId) {
+      console.error("Missing roomId");
+      return error(400, "Missing roomId");
+    }
+
+    const token = request.headers.get("Authorization")?.split(" ")[1];
+    if (!token) {
+      console.error("Missing token");
+      return error(400, "Missing token");
+    }
+
+    const pages = this.pages as string;
+    if (!pages) {
+      console.error("Missing pages");
+      return error(400, "Missing pages");
+    }
+
+    try {
+      const payload = await new TokenVerifier(
+        this.LIVEKIT_API_KEY,
+        this.LIVEKIT_API_SECRET
+      ).verify(token);
+
+      if (
+        payload.attributes?.nodeId?.split("/").shift() !==
+        roomId.split("/").shift()
+      ) {
+        console.error("Invalid roomId");
+        return error(401, "Invalid roomId");
+      }
+    } catch (err) {
+      console.error("Invalid token", err);
+      return error(401, "Invalid token");
+    }
+
+    const room = await this.getStudyRoom();
+    const snapshot = room.getCurrentSnapshot();
+    const pageDocuments = snapshot.documents
+      .filter((document) => document.state.typeName === "page")
+      .map((document) => ({
+        ...document,
+        id: document.state.id.split(":")[1],
+      }));
+    const sortedPages = pageDocuments.sort((a: any, b: any) =>
+      sortByIndex(a.state, b.state)
+    );
+    return new Response(JSON.stringify({ data: { pages: sortedPages } }), {
+      status: 200,
+    });
   }
 
   async handleStudyUpdate(request: IRequest): Promise<Response> {
