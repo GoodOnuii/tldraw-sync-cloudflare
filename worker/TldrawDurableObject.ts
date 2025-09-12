@@ -193,6 +193,9 @@ export class TldrawDurableObject {
 
     // load the room, or retrieve it if it's already loaded
     const room = await this.getRoom();
+    await room.updateStore((store) => {
+      store.delete("page:page");
+    });
 
     // connect the client to the room
     room.handleSocketConnect({ sessionId, socket: serverWebSocket });
@@ -400,8 +403,8 @@ export class TldrawDurableObject {
 
           // create a PhotonImage instance
           const inputImage = PhotonImage.new_from_byteslice(inputBytes);
-          const w = inputImage.get_width() * 2;
-          const h = inputImage.get_height() * 2;
+          const w = inputImage.get_width();
+          const h = inputImage.get_height();
           const base64 = inputImage.get_base64();
           inputImage.free();
           const match = base64.match(/^data:([^;]+)/);
@@ -670,7 +673,7 @@ export class TldrawDurableObject {
 
     // load the room, or retrieve it if it's already loaded
     const room = await this.getStudyRoom();
-    room.updateStore((store) => {
+    await room.updateStore((store) => {
       store.delete("page:page");
     });
 
@@ -720,12 +723,31 @@ export class TldrawDurableObject {
 
     const room = await this.getStudyRoom();
     const snapshot = room.getCurrentSnapshot();
+
+    const drawShapesByPageId = new Map<string, boolean>();
+    snapshot.documents.forEach((doc) => {
+      const state = doc.state as any;
+      if (state.typeName === "shape" && state.type === "draw" && state.parentId) {
+        const pageId = state.parentId.split(":")[1];
+        drawShapesByPageId.set(pageId, true);
+      }
+    });
+    
     const pageDocuments = snapshot.documents
       .filter((document) => document.state.typeName === "page")
-      .map((document) => ({
-        ...document,
-        id: document.state.id.split(":")[1],
-      }));
+      .map((document) => {
+        const pageId = document.state.id.split(":")[1];
+        
+        // Use the pre-built lookup map for O(1) draw shape check
+        const hasDrawShape = drawShapesByPageId.has(pageId);
+        
+        return {
+          ...document,
+          id: pageId,
+          hasDrawShape,
+        };
+      });
+
     const sortedPages = pageDocuments.sort((a: any, b: any) =>
       sortByIndex(a.state, b.state)
     );
@@ -756,7 +778,7 @@ export class TldrawDurableObject {
         }
       });
     }
-    room.updateStore((store) => {
+    await room.updateStore((store) => {
       store.delete("page:page");
     });
     return new Response(null, { status: 200 });
