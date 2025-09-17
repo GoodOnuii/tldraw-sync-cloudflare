@@ -135,6 +135,25 @@ export class TldrawDurableObject {
       }
       return this.handleStudySave(request);
     })
+    .delete("/study/:userId/:hash/pages", async (request) => {
+      if (!this.roomId) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          const roomId = `${request.params.userId}/${request.params.hash}`;
+          await this.ctx.storage.put("roomId", roomId);
+          this.roomId = roomId;
+        });
+      }
+      return this.handleStudyDeletePages(request);
+    })
+    .delete("/study/:userId", async (request) => {
+      if (!this.roomId) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          await this.ctx.storage.put("roomId", request.params.userId);
+          this.roomId = request.params.userId;
+        });
+      }
+      return this.handleStudyDelete(request);
+    })
     .post("/disconnect/:userId/:hash", async (request) => {
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
@@ -361,132 +380,137 @@ export class TldrawDurableObject {
       message: string;
       extensions: { id: string; image: string; thumbnail?: string };
     }[] = [];
-    const pagePromises = body.input.pages.map(async (page: { id: string; image?: string; thumbnail?: string }, pageIndex: number) => {
-      const index = aboveIndices[pageIndex];
-      if (!index) return;
+    const pagePromises = body.input.pages.map(
+      async (
+        page: { id: string; image?: string; thumbnail?: string },
+        pageIndex: number
+      ) => {
+        const index = aboveIndices[pageIndex];
+        if (!index) return;
 
-      // const pageDocument = pageDocuments.find(
-      //   (document) => document.state.id === `page:${page.id}`
-      // );
-      // if (pageDocument) {
-      //   const state = pageDocument.state as any;
-      //   state.index = index;
-      //   return;
-      // }
-
-      const pageFromBucket = await this.r2.get(
-        `study/${nodeId}/${page.id}.json`
-      );
-      if (pageFromBucket) {
-        const documents = await pageFromBucket.json<
-          RoomSnapshot["documents"]
-        >();
-        return documents.map((document) => {
-          const state = document.state as any;
-          if (state.typeName === "page") state.index = index;
-          return document;
-        });
-      } else if (page.image) {
         // const pageDocument = pageDocuments.find(
         //   (document) => document.state.id === `page:${page.id}`
         // );
         // if (pageDocument) {
         //   const state = pageDocument.state as any;
         //   state.index = index;
-        //   return [pageDocument];
+        //   return;
         // }
 
-        try {
-          const inputBytes = await fetch(page.image)
-            .then((res) => res.arrayBuffer())
-            .then((buffer) => new Uint8Array(buffer));
+        const pageFromBucket = await this.r2.get(
+          `study/${nodeId}/${page.id}.json`
+        );
+        if (pageFromBucket) {
+          const documents = await pageFromBucket.json<
+            RoomSnapshot["documents"]
+          >();
+          return documents.map((document) => {
+            const state = document.state as any;
+            if (state.typeName === "page") state.index = index;
+            return document;
+          });
+        } else if (page.image) {
+          // const pageDocument = pageDocuments.find(
+          //   (document) => document.state.id === `page:${page.id}`
+          // );
+          // if (pageDocument) {
+          //   const state = pageDocument.state as any;
+          //   state.index = index;
+          //   return [pageDocument];
+          // }
 
-          // create a PhotonImage instance
-          const inputImage = PhotonImage.new_from_byteslice(inputBytes);
-          const w = inputImage.get_width();
-          const h = inputImage.get_height();
-          const base64 = inputImage.get_base64();
-          inputImage.free();
-          const match = base64.match(/^data:([^;]+)/);
-          if (!match) return;
-          const mimeType = match[1];
-          return [
-            {
-              state: {
-                meta: {
-                  thumbnail: page.thumbnail ?? page.image,
-                },
-                id: `page:${page.id}`,
-                name: `${page.id}`,
-                index: index,
-                typeName: "page",
-              },
-              lastChangedClock: 0,
-            },
-            {
-              state: {
-                id: `asset:${page.id}`,
-                type: "image",
-                typeName: "asset",
-                props: {
+          try {
+            const inputBytes = await fetch(page.image)
+              .then((res) => res.arrayBuffer())
+              .then((buffer) => new Uint8Array(buffer));
+
+            // create a PhotonImage instance
+            const inputImage = PhotonImage.new_from_byteslice(inputBytes);
+            const w = inputImage.get_width();
+            const h = inputImage.get_height();
+            const base64 = inputImage.get_base64();
+            inputImage.free();
+            const match = base64.match(/^data:([^;]+)/);
+            if (!match) return;
+            const mimeType = match[1];
+            return [
+              {
+                state: {
+                  meta: {
+                    thumbnail: page.thumbnail ?? page.image,
+                  },
+                  id: `page:${page.id}`,
                   name: `${page.id}`,
-                  src: `${page.image}`,
-                  w: w,
-                  h: h,
-                  mimeType: mimeType,
-                  isAnimated: false,
+                  index: index,
+                  typeName: "page",
                 },
-                meta: {},
+                lastChangedClock: 0,
               },
-              lastChangedClock: 0,
-            },
-            {
-              state: {
-                x: 0,
-                y: 0,
-                rotation: 0,
-                isLocked: true,
-                opacity: 1,
-                meta: {},
-                id: `shape:${page.id}`,
-                type: "image",
-                typeName: "shape",
-                index: "a1",
-                parentId: `page:${page.id}`,
-                props: {
-                  w: w,
-                  h: h,
-                  assetId: `asset:${page.id}`,
-                  playing: true,
-                  url: "",
-                  crop: null,
-                  flipX: false,
-                  flipY: false,
-                  altText: "",
+              {
+                state: {
+                  id: `asset:${page.id}`,
+                  type: "image",
+                  typeName: "asset",
+                  props: {
+                    name: `${page.id}`,
+                    src: `${page.image}`,
+                    w: w,
+                    h: h,
+                    mimeType: mimeType,
+                    isAnimated: false,
+                  },
+                  meta: {},
                 },
+                lastChangedClock: 0,
               },
-              lastChangedClock: 0,
-            }
-          ];
-        } catch (err) {
-          throw {
-            message: `${err}`,
-            extensions: {
-              id: page.id,
-              image: page.image,
-              thumbnail: page.thumbnail,
-            },
-          };
+              {
+                state: {
+                  x: 0,
+                  y: 0,
+                  rotation: 0,
+                  isLocked: true,
+                  opacity: 1,
+                  meta: {},
+                  id: `shape:${page.id}`,
+                  type: "image",
+                  typeName: "shape",
+                  index: "a1",
+                  parentId: `page:${page.id}`,
+                  props: {
+                    w: w,
+                    h: h,
+                    assetId: `asset:${page.id}`,
+                    playing: true,
+                    url: "",
+                    crop: null,
+                    flipX: false,
+                    flipY: false,
+                    altText: "",
+                  },
+                },
+                lastChangedClock: 0,
+              },
+            ];
+          } catch (err) {
+            throw {
+              message: `${err}`,
+              extensions: {
+                id: page.id,
+                image: page.image,
+                thumbnail: page.thumbnail,
+              },
+            };
+          }
         }
       }
-    });
+    );
 
     const results = await Promise.allSettled(pagePromises);
-    
+
     results.forEach((result) => {
-      if (result.status === 'fulfilled' && result.value) {
+      if (result.status === "fulfilled" && result.value) {
         pageFromDocuments.push(...result.value);
-      } else if (result.status === 'rejected') {
+      } else if (result.status === "rejected") {
         errors.push(result.reason);
       }
     });
@@ -727,20 +751,24 @@ export class TldrawDurableObject {
     const drawShapesByPageId = new Map<string, boolean>();
     snapshot.documents.forEach((doc) => {
       const state = doc.state as any;
-      if (state.typeName === "shape" && state.type === "draw" && state.parentId) {
+      if (
+        state.typeName === "shape" &&
+        state.type === "draw" &&
+        state.parentId
+      ) {
         const pageId = state.parentId.split(":")[1];
         drawShapesByPageId.set(pageId, true);
       }
     });
-    
+
     const pageDocuments = snapshot.documents
       .filter((document) => document.state.typeName === "page")
       .map((document) => {
         const pageId = document.state.id.split(":")[1];
-        
+
         // Use the pre-built lookup map for O(1) draw shape check
         const hasDrawShape = drawShapesByPageId.has(pageId);
-        
+
         return {
           ...document,
           id: pageId,
@@ -816,6 +844,29 @@ export class TldrawDurableObject {
         snapshot
       );
     }
+
+    return new Response(null, { status: 200 });
+  }
+
+  async handleStudyDeletePages(request: IRequest): Promise<Response> {
+    if (!this.roomId) throw new Error("Missing room");
+
+    const pages = this.pages;
+    if (!pages) return error(400, "Missing pages");
+
+    const room = await this.getStudyRoom();
+    room.loadSnapshot({ clock: 0, documents: [] });
+
+    return new Response(null, { status: 200 });
+  }
+
+  async handleStudyDelete(request: IRequest): Promise<Response> {
+    if (!this.roomId) throw new Error("Missing room");
+
+    const studyFiles = await this.r2.list({
+      prefix: `study/${this.roomId}/`,
+    });
+    await this.r2.delete(studyFiles.objects.flatMap((file) => file.key));
 
     return new Response(null, { status: 200 });
   }

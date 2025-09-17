@@ -51,12 +51,22 @@ const router = AutoRouter<IRequest, [env: Environment, ctx: ExecutionContext]>({
 	.put('/study/:userId/:hash', (request, env) => {
 		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
 		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
-		return room.fetch(request.url, { method: 'POST', headers: request.headers, body: request.body })
+		return room.fetch(request.url, { method: 'PUT', headers: request.headers, body: request.body })
 	})
 	.post('/study/:userId/:hash', (request, env) => {
 		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
 		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
 		return room.fetch(request.url, { method: 'POST', headers: request.headers, body: request.body })
+	})
+	.delete('/study/:userId/:hash/pages', (request, env) => {
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(request.url, { method: 'DELETE', headers: request.headers, body: request.body })
+	})
+	.delete('/study/:userId', (request, env) => {
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(request.url, { method: 'DELETE', headers: request.headers, body: request.body })
 	})
 	.post('/disconnect/:userId/:hash', (request, env) => {
 		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
