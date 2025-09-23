@@ -75,7 +75,7 @@ const router = AutoRouter<IRequest, [env: Environment, ctx: ExecutionContext]>({
 	})
 
 	// assets can be uploaded to the bucket under /uploads:
-	.post('/uploads/:uploadId', handleAssetUpload)
+	.post('/uploads', handleAssetUpload)
 
 	// they can be retrieved from the bucket too:
 	.get('/uploads/:uploadId', handleAssetDownload)

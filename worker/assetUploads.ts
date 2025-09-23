@@ -1,5 +1,6 @@
 import { IRequest, error } from 'itty-router'
 import { Environment } from './types'
+import { UUID } from 'bson'
 
 // R2Object 타입 정의 (Cloudflare Workers에서 제공하지 않는 경우)
 interface R2Object {
@@ -14,7 +15,8 @@ function getAssetObjectName(uploadId: string) {
 
 // when a user uploads an asset, we store it in the bucket. we only allow image and video assets.
 export async function handleAssetUpload(request: IRequest, env: Environment) {
-	const objectName = getAssetObjectName(request.params.uploadId)
+	const uploadId = new UUID().toString()
+	const objectName = getAssetObjectName(uploadId)
 
 	const contentType = request.headers.get('content-type') ?? ''
 	if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) {
@@ -38,7 +40,7 @@ export async function handleAssetUpload(request: IRequest, env: Environment) {
 		httpMetadata: request.headers,
 	})
 
-	return { ok: true }
+	return { ok: true, data: { id: uploadId } }
 }
 
 // chunk 업로드 처리 함수

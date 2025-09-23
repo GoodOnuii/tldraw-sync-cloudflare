@@ -26,6 +26,7 @@
 		"@tldraw/sync": "3.15.4",
 		"@tldraw/sync-core": "3.15.4",
 		"@tldraw/tlschema": "3.15.4",
+		"bson": "^6.10.4",
 		"cloudflare-workers-unfurl": "^0.0.7",
 		"itty-router": "^5.0.17",
 		"jose": "^6.0.11",

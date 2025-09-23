@@ -437,7 +437,7 @@ export class TldrawDurableObject {
               {
                 state: {
                   meta: {
-                    thumbnail: page.thumbnail ?? page.image,
+                    thumbnail: page.thumbnail ? page.thumbnail : page.image,
                   },
                   id: `page:${page.id}`,
                   name: `${page.id}`,
