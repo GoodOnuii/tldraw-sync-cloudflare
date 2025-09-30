@@ -104,7 +104,7 @@ export class TldrawDurableObject {
       return this.handleStudyConnect(request);
     })
     .get("/study/:userId/:hash/pages", async (request) => {
-      if (!this.roomId) {
+      if (!this.roomId || !this.pages) {
         await this.ctx.blockConcurrencyWhile(async () => {
           const roomId = `${request.params.userId}/${request.params.hash}`;
           const pages = request.query.pages;
