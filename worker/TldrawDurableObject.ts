@@ -382,7 +382,14 @@ export class TldrawDurableObject {
     }[] = [];
     const pagePromises = body.input.pages.map(
       async (
-        page: { id: string; image?: string; thumbnail?: string },
+        page: {
+          id: string;
+          image?: string;
+          thumbnail?: string;
+          width?: number;
+          height?: number;
+          mimeType?: string;
+        },
         pageIndex: number
       ) => {
         const index = aboveIndices[pageIndex];
@@ -420,19 +427,27 @@ export class TldrawDurableObject {
           // }
 
           try {
-            const inputBytes = await fetch(page.image)
-              .then((res) => res.arrayBuffer())
-              .then((buffer) => new Uint8Array(buffer));
+            let w = 0;
+            let h = 0;
+            let mimeType = "";
+            if (page.width && page.height && page.mimeType) {
+              w = page.width;
+              h = page.height;
+              mimeType = page.mimeType;
+            } else {
+              const inputBytes = await fetch(page.image)
+                .then((res) => res.arrayBuffer())
+                .then((buffer) => new Uint8Array(buffer));
+              const inputImage = PhotonImage.new_from_byteslice(inputBytes);
+              w = inputImage.get_width();
+              h = inputImage.get_height();
+              const base64 = inputImage.get_base64();
+              inputImage.free();
+              const match = base64.match(/^data:([^;]+)/);
+              if (!match) return;
+              mimeType = match[1];
+            }
 
-            // create a PhotonImage instance
-            const inputImage = PhotonImage.new_from_byteslice(inputBytes);
-            const w = inputImage.get_width();
-            const h = inputImage.get_height();
-            const base64 = inputImage.get_base64();
-            inputImage.free();
-            const match = base64.match(/^data:([^;]+)/);
-            if (!match) return;
-            const mimeType = match[1];
             return [
               {
                 state: {
