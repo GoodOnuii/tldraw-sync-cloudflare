@@ -212,12 +212,12 @@ export class TldrawDurableObject {
 
     // load the room, or retrieve it if it's already loaded
     const room = await this.getRoom();
-    await room.updateStore((store) => {
-      store.delete("page:page");
-    });
+    // await room.updateStore((store) => {
+    //   store.delete("page:page");
+    // });
 
     // connect the client to the room
-    room.handleSocketConnect({ sessionId, socket: serverWebSocket });
+    room.handleSocketConnect({ sessionId, socket: serverWebSocket, isReadonly: request.query.readonly as string === "1" });
 
     // return the websocket connection to the client
     return new Response(null, { status: 101, webSocket: clientWebSocket });
@@ -717,7 +717,7 @@ export class TldrawDurableObject {
     });
 
     // connect the client to the room
-    room.handleSocketConnect({ sessionId, socket: serverWebSocket });
+    room.handleSocketConnect({ sessionId, socket: serverWebSocket, isReadonly: request.query.readonly as string === "1" });
 
     // return the websocket connection to the client
     return new Response(null, { status: 101, webSocket: clientWebSocket });
