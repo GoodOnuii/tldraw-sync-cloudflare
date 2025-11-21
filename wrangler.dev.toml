@@ -27,6 +27,7 @@ new_sqlite_classes = ["TldrawDurableObject"]
 binding = 'TLDRAW_BUCKET'
 bucket_name = 'canvas-dev-content'
 preview_bucket_name = 'canvas-dev-content'
+remote = true
 
 [vars]
 LIVEKIT_API_KEY="cf6e63e2-1067-4708-9225-ba705b235f25"
