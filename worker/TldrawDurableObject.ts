@@ -12,13 +12,9 @@ import { ClaimGrants, TokenVerifier } from "livekit-server-sdk";
 import { PhotonImage } from "@cf-wasm/photon";
 import { getIndicesAbove, sortByIndex, UnknownRecord } from "tldraw";
 
-const migrations = [...defaultShapeSchemas.geo.migrations.sequence]
-const migrationIndexToRemove = migrations.findIndex((migration: any) => migration.id === "com.tldraw.shape.geo/10")
-if (migrationIndexToRemove !== -1) migrations.splice(migrationIndexToRemove, 1)
-
 // add custom shapes and bindings here if needed:
 const schema = createTLSchema({
-  shapes: { ...defaultShapeSchemas, geo: { ...defaultShapeSchemas.geo, migrations: { sequence: migrations } } },
+  shapes: { ...defaultShapeSchemas },
   // bindings: { ...defaultBindingSchemas },
 });
 
