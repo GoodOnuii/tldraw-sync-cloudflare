@@ -217,7 +217,11 @@ export class TldrawDurableObject {
     // });
 
     // connect the client to the room
-    room.handleSocketConnect({ sessionId, socket: serverWebSocket, isReadonly: request.query.readonly as string === "1" });
+    room.handleSocketConnect({
+      sessionId,
+      socket: serverWebSocket,
+      isReadonly: (request.query.readonly as string) === "1",
+    });
 
     // return the websocket connection to the client
     return new Response(null, { status: 101, webSocket: clientWebSocket });
@@ -717,7 +721,11 @@ export class TldrawDurableObject {
     });
 
     // connect the client to the room
-    room.handleSocketConnect({ sessionId, socket: serverWebSocket, isReadonly: request.query.readonly as string === "1" });
+    room.handleSocketConnect({
+      sessionId,
+      socket: serverWebSocket,
+      isReadonly: (request.query.readonly as string) === "1",
+    });
 
     // return the websocket connection to the client
     return new Response(null, { status: 101, webSocket: clientWebSocket });
@@ -912,13 +920,13 @@ export class TldrawDurableObject {
     if (!this.roomPromise) {
       this.roomPromise = (async () => {
         // fetch the room from R2
+        const [userId, hash] = roomId.split("/");
+        const snapshot = await this.r2.get(`study/${userId}/${hash}.json`);
         const pageDocuments: RoomSnapshot["documents"] = [];
         for (const id of pageIds) {
-          const pageFromBucket = await this.r2.get(
-            `study/${roomId.split("/").shift()}/${id}.json`
-          );
-          const documents = pageFromBucket
-            ? await pageFromBucket.json<RoomSnapshot["documents"]>()
+          const document = await this.r2.get(`study/${userId}/${id}.json`);
+          const documents = document
+            ? await document.json<RoomSnapshot["documents"]>()
             : [];
           pageDocuments.push(...documents);
         }
@@ -926,7 +934,7 @@ export class TldrawDurableObject {
         // if it doesn't exist, we'll just create a new empty room
         const initialSnapshot =
           pageDocuments.length > 0
-            ? { clock: 0, documents: pageDocuments }
+            ? { clock: 0, snapshot, documents: pageDocuments }
             : { clock: 0, documents: [] };
 
         // create a new TLSocketRoom. This handles all the sync protocol & websocket connections.
@@ -965,18 +973,19 @@ export class TldrawDurableObject {
           : record.typeName === "asset"
           ? record.id.split(":")[1]
           : null;
-      if (id === null) continue;
+      if (id === null || id === "page") continue;
       if (pageDocuments[id]) pageDocuments[id].push(document);
       else pageDocuments[id] = [document];
     }
+    if (Object.keys(pageDocuments).length === 0) return;
 
     // convert the room to JSON and upload it to R2
-    for (const [id, documents] of Object.entries(pageDocuments)) {
-      const snapshot = JSON.stringify(documents);
-      await this.r2.put(
-        `study/${this.roomId.split("/").shift()}/${id}.json`,
-        snapshot
-      );
+    const [userId, hash] = this.roomId.split("/");
+    const schema = JSON.stringify({ schema: currentSnapshot.schema });
+    await this.r2.put(`study/${userId}/${hash}.json`, schema);
+    for await (const [id, documents] of Object.entries(pageDocuments)) {
+      const document = JSON.stringify(documents);
+      await this.r2.put(`study/${userId}/${id}.json`, document);
     }
   }, 10_000);
 }
