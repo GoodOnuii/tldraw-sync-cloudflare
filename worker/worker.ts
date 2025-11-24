@@ -19,59 +19,66 @@ const router = AutoRouter<IRequest, [env: Environment, ctx: ExecutionContext]>({
 })
 	// requests to /connect are routed to the Durable Object, and handle realtime websocket syncing
 	.get('/connect/:roomId', (request, env) => {
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		    return room.fetch(request.url, { headers: request.headers, body: request.body })
+		}
 		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
 		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
 		return room.fetch(request.url, { headers: request.headers, body: request.body })
 	})
+	.post('/disconnect/:roomId', (request, env) => {
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+			return room.fetch(request.url, { method: 'POST', headers: request.headers, body: request.body })
+		}
+	})
+	.post('/rooms/:roomId', (request, env) => {
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(request.url, { method: 'POST', headers: request.headers, body: request.body })
+	})
+	.delete('/rooms/:roomId', (request, env) => {
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(request.url, { method: 'DELETE', headers: request.headers, body: request.body })
+	})
 	.get('/rooms/:roomId/pages', (request, env) => {
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+			return room.fetch(request.url, { headers: request.headers, body: request.body })
+		}
 		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
 		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
 		return room.fetch(request.url, { headers: request.headers, body: request.body })
 	})
 	.put('/rooms/:roomId/pages', (request, env) => {
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+			return room.fetch(request.url, { method: 'PUT', headers: request.headers, body: request.body })
+		}
 		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
 		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
 		return room.fetch(request.url, { method: 'PUT', headers: request.headers, body: request.body })
 	})
 	.delete('/rooms/:roomId/pages', (request, env) => {
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+			return room.fetch(request.url, { method: 'DELETE', headers: request.headers, body: request.body })
+		}
 		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
 		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
 		return room.fetch(request.url, { method: 'DELETE', headers: request.headers, body: request.body })
 	})
-	.get('/connect/:userId/:hash', (request, env) => {
-		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
+	.get('/rooms/:roomId/sessions', (request, env) => {
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
 		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
 		return room.fetch(request.url, { headers: request.headers, body: request.body })
-	})
-	.get('/study/:userId/:hash/pages', (request, env) => {
-		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
-		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
-		return room.fetch(request.url, { headers: request.headers, body: request.body })
-	})
-	.put('/study/:userId/:hash', (request, env) => {
-		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
-		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
-		return room.fetch(request.url, { method: 'PUT', headers: request.headers, body: request.body })
-	})
-	.post('/study/:userId/:hash', (request, env) => {
-		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
-		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
-		return room.fetch(request.url, { method: 'POST', headers: request.headers, body: request.body })
-	})
-	.delete('/study/:userId/:hash/pages', (request, env) => {
-		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
-		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
-		return room.fetch(request.url, { method: 'DELETE', headers: request.headers, body: request.body })
-	})
-	.delete('/study/:userId', (request, env) => {
-		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId)
-		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
-		return room.fetch(request.url, { method: 'DELETE', headers: request.headers, body: request.body })
-	})
-	.post('/disconnect/:userId/:hash', (request, env) => {
-		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.userId + '/' + request.params.hash)
-		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
-		return room.fetch(request.url, { method: 'POST', headers: request.headers, body: request.body })
 	})
 
 	// assets can be uploaded to the bucket under /uploads:

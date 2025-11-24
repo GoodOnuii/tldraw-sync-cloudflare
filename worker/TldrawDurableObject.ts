@@ -28,6 +28,13 @@ export class TldrawDurableObject {
   // the room ID will be missing while the room is being initialized
   private roomId: string | null = null;
   private pages: string | null = null;
+  private sessions: {
+    [id: string]: {
+      username: string;
+      connectedAt: string;
+      disconnectedAt: string;
+    };
+  } = {};
   // when we load the room from the R2 bucket, we keep it here. it's a promise so we only ever
   // load it once.
   private roomPromise: Promise<TLSocketRoom<TLRecord, void>> | null = null;
@@ -56,6 +63,19 @@ export class TldrawDurableObject {
     },
   })
     .get("/connect/:roomId", async (request) => {
+      if (request.query.hash) {
+        if (!this.roomId || !this.pages) {
+          await this.ctx.blockConcurrencyWhile(async () => {
+            const roomId = `${request.params.roomId}/${request.query.hash}`;
+            const pages = request.query.pages;
+            await this.ctx.storage.put("roomId", roomId);
+            this.roomId = roomId;
+            this.pages = `${pages}`;
+          });
+        }
+        return this.handleStudyConnect(request);
+      }
+
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
           await this.ctx.storage.put("roomId", request.params.roomId);
@@ -64,7 +84,55 @@ export class TldrawDurableObject {
       }
       return this.handleConnect(request);
     })
+    .post("/disconnect/:userId", async (request) => {
+      if (request.query.hash) {
+        if (!this.roomId) {
+          await this.ctx.blockConcurrencyWhile(async () => {
+            const roomId = `${request.params.roomId}/${request.query.hash}`;
+            await this.ctx.storage.put("roomId", roomId);
+            this.roomId = roomId;
+          });
+        }
+        return this.handleStudyDisconnect(request);
+      }
+    })
+    .post("/rooms/:roomId", async (request) => {
+      if (request.query.hash) {
+        if (!this.roomId) {
+          await this.ctx.blockConcurrencyWhile(async () => {
+            const roomId = `${request.params.roomId}/${request.query.hash}`;
+            await this.ctx.storage.put("roomId", roomId);
+            this.roomId = roomId;
+          });
+        }
+        return this.handleStudySave(request);
+      }
+    })
+    .delete("/rooms/:roomId", async (request) => {
+      if (request.query.hash) {
+        if (!this.roomId) {
+          await this.ctx.blockConcurrencyWhile(async () => {
+            await this.ctx.storage.put("roomId", request.params.roomId);
+            this.roomId = request.params.roomId;
+          });
+        }
+        return this.handleStudyDelete(request);
+      }
+    })
     .get("/rooms/:roomId/pages", async (request) => {
+      if (request.query.hash) {
+        if (!this.roomId || !this.pages) {
+          await this.ctx.blockConcurrencyWhile(async () => {
+            const roomId = `${request.params.roomId}/${request.query.hash}`;
+            const pages = request.query.pages;
+            await this.ctx.storage.put("roomId", roomId);
+            this.roomId = roomId;
+            this.pages = `${pages}`;
+          });
+        }
+        return this.handleStudyGetPages(request);
+      }
+
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
           await this.ctx.storage.put("roomId", request.params.roomId);
@@ -74,6 +142,17 @@ export class TldrawDurableObject {
       return this.handleGetPages(request);
     })
     .put("/rooms/:roomId/pages", async (request) => {
+      if (request.query.hash) {
+        if (!this.roomId) {
+          await this.ctx.blockConcurrencyWhile(async () => {
+            const roomId = `${request.params.roomId}/${request.query.hash}`;
+            await this.ctx.storage.put("roomId", roomId);
+            this.roomId = roomId;
+          });
+        }
+        return this.handleStudyUpdate(request);
+      }
+
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
           await this.ctx.storage.put("roomId", request.params.roomId);
@@ -83,6 +162,17 @@ export class TldrawDurableObject {
       return this.handlePutPages(request);
     })
     .delete("/rooms/:roomId/pages", async (request) => {
+      if (request.query.hash) {
+        if (!this.roomId) {
+          await this.ctx.blockConcurrencyWhile(async () => {
+            const roomId = `${request.params.roomId}/${request.query.hash}`;
+            await this.ctx.storage.put("roomId", roomId);
+            this.roomId = roomId;
+          });
+        }
+        return this.handleStudyDeletePages(request);
+      }
+
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
           await this.ctx.storage.put("roomId", request.params.roomId);
@@ -91,78 +181,14 @@ export class TldrawDurableObject {
       }
       return this.handleDeletePages(request);
     })
-    .get("/connect/:userId/:hash", async (request) => {
-      if (!this.roomId || !this.pages) {
-        await this.ctx.blockConcurrencyWhile(async () => {
-          const roomId = `${request.params.userId}/${request.params.hash}`;
-          const pages = request.query.pages;
-          await this.ctx.storage.put("roomId", roomId);
-          this.roomId = roomId;
-          this.pages = `${pages}`;
-        });
-      }
-      return this.handleStudyConnect(request);
-    })
-    .get("/study/:userId/:hash/pages", async (request) => {
-      if (!this.roomId || !this.pages) {
-        await this.ctx.blockConcurrencyWhile(async () => {
-          const roomId = `${request.params.userId}/${request.params.hash}`;
-          const pages = request.query.pages;
-          await this.ctx.storage.put("roomId", roomId);
-          this.roomId = roomId;
-          this.pages = `${pages}`;
-        });
-      }
-      return this.handleStudyGetPages(request);
-    })
-    .put("/study/:userId/:hash", async (request) => {
+    .get("/rooms/:roomId/sessions", async (request) => {
       if (!this.roomId) {
         await this.ctx.blockConcurrencyWhile(async () => {
-          const roomId = `${request.params.userId}/${request.params.hash}`;
-          await this.ctx.storage.put("roomId", roomId);
-          this.roomId = roomId;
+          await this.ctx.storage.put("roomId", request.params.roomId);
+          this.roomId = request.params.roomId;
         });
       }
-      return this.handleStudyUpdate(request);
-    })
-    .post("/study/:userId/:hash", async (request) => {
-      if (!this.roomId) {
-        await this.ctx.blockConcurrencyWhile(async () => {
-          const roomId = `${request.params.userId}/${request.params.hash}`;
-          await this.ctx.storage.put("roomId", roomId);
-          this.roomId = roomId;
-        });
-      }
-      return this.handleStudySave(request);
-    })
-    .delete("/study/:userId/:hash/pages", async (request) => {
-      if (!this.roomId) {
-        await this.ctx.blockConcurrencyWhile(async () => {
-          const roomId = `${request.params.userId}/${request.params.hash}`;
-          await this.ctx.storage.put("roomId", roomId);
-          this.roomId = roomId;
-        });
-      }
-      return this.handleStudyDeletePages(request);
-    })
-    .delete("/study/:userId", async (request) => {
-      if (!this.roomId) {
-        await this.ctx.blockConcurrencyWhile(async () => {
-          await this.ctx.storage.put("roomId", request.params.userId);
-          this.roomId = request.params.userId;
-        });
-      }
-      return this.handleStudyDelete(request);
-    })
-    .post("/disconnect/:userId/:hash", async (request) => {
-      if (!this.roomId) {
-        await this.ctx.blockConcurrencyWhile(async () => {
-          const roomId = `${request.params.userId}/${request.params.hash}`;
-          await this.ctx.storage.put("roomId", roomId);
-          this.roomId = roomId;
-        });
-      }
-      return this.handleStudyDisconnect(request);
+      return this.handleGetSessions(request);
     });
 
   // `fetch` is the entry point for all requests to the Durable Object
@@ -191,19 +217,31 @@ export class TldrawDurableObject {
       return error(400, "Missing token");
     }
 
-    try {
-      const payload = await new TokenVerifier(
-        this.LIVEKIT_API_KEY,
-        this.LIVEKIT_API_SECRET
-      ).verify(token);
+    const payload = await new TokenVerifier(
+      this.LIVEKIT_API_KEY,
+      this.LIVEKIT_API_SECRET
+    )
+      .verify(token)
+      .catch((err) => {
+        console.error("Invalid token", err);
+        throw error(401, "Invalid token");
+      });
 
-      if (payload.video?.room !== roomId) {
-        console.error("Invalid roomId");
-        return error(401, "Invalid roomId");
-      }
-    } catch (err) {
-      console.error("Invalid token", err);
-      return error(401, "Invalid token");
+    if (payload.video?.room !== roomId) {
+      console.error("Invalid roomId");
+      return error(401, "Invalid roomId");
+    }
+
+    const sub = payload.sub;
+    if (!sub) {
+      console.error("Missing payload.sub");
+      return error(400, "Missing payload.sub");
+    }
+
+    const name = payload.name;
+    if (!name) {
+      console.error("Missing payload.name");
+      return error(400, "Missing payload.name");
     }
 
     // Create the websocket pair for the client
@@ -212,13 +250,26 @@ export class TldrawDurableObject {
 
     // load the room, or retrieve it if it's already loaded
     const room = await this.getRoom();
-    // await room.updateStore((store) => {
-    //   store.delete("page:page");
-    // });
+    this.sessions[sub] = {
+      username: name.match(/\d+/g)?.join("") ?? "",
+      connectedAt: new Date().toISOString(),
+      disconnectedAt: "",
+    };
+
+    // const sessionsFromBucket = await this.r2.get(`room/${this.roomId}/sessions.json`);
+    // const sessions = sessionsFromBucket
+    //   ? await sessionsFromBucket.json<{ [id: string]: { username: string; connectedAt: string; disconnectedAt: string } }>()
+    //   : {};
+    // for (const [id, session] of Object.entries(this.sessions)) {
+    //   if (!sessions[id]) sessions[id] = session;
+    //   if (!this.sessions[id]) sessions[id].disconnectedAt = new Date().toISOString();
+    // }
+    // const sessionsToBucket = JSON.stringify(sessions);
+    // await this.r2.put(`room/${this.roomId}/sessions.json`, sessionsToBucket);
 
     // connect the client to the room
     room.handleSocketConnect({
-      sessionId,
+      sessionId: sub,
       socket: serverWebSocket,
       isReadonly: (request.query.readonly as string) === "1",
     });
@@ -625,6 +676,71 @@ export class TldrawDurableObject {
     });
   }
 
+  async handleGetSessions(request: IRequest): Promise<Response> {
+    const roomId = this.roomId;
+    if (!roomId) {
+      console.error("Missing roomId");
+      return error(400, "Missing roomId");
+    }
+
+    // const token = request.headers.get("Authorization")?.split(" ")[1];
+    // if (!token) {
+    //   console.error("Missing token");
+    //   return error(400, "Missing token");
+    // }
+
+    const sessionsFromBucket = await this.r2.get(
+      `room/${this.roomId}/sessions.json`
+    );
+    const sessions = sessionsFromBucket
+      ? await sessionsFromBucket.json<{
+          [id: string]: {
+            username: string;
+            connectedAt: string;
+            disconnectedAt: string;
+          };
+        }>()
+      : this.sessions;
+
+    const sessionsMap: {
+      [id: string]: {
+        username: string;
+        connectedAt: string;
+        disconnectedAt: string;
+      };
+    } = {};
+    for (const [id, session] of Object.entries(sessions)) {
+      if (!sessionsMap[id]) {
+        sessionsMap[id] = {
+          username: session.username,
+          connectedAt: session.connectedAt,
+          disconnectedAt: session.disconnectedAt,
+        };
+      }
+      if (!sessionsMap[id].disconnectedAt && !this.sessions[id]) {
+        sessionsMap[id].disconnectedAt = new Date().toISOString();
+      }
+    }
+
+    const sessionsToReturn = Object.entries(sessionsMap).map(
+      ([id, session]) => ({
+        id: id,
+        username: session.username,
+        connectedAt: session.connectedAt,
+        disconnectedAt: session.disconnectedAt,
+      })
+    );
+
+    return new Response(
+      JSON.stringify({
+        data: { sessions: sessionsToReturn },
+      }),
+      {
+        status: 200,
+      }
+    );
+  }
+
   getRoom() {
     const roomId = this.roomId;
     if (!roomId) throw new Error("Missing roomId");
@@ -632,7 +748,9 @@ export class TldrawDurableObject {
     if (!this.roomPromise) {
       this.roomPromise = (async () => {
         // fetch the room from R2
-        const roomFromBucket = await this.r2.get(`room/${roomId}.json`);
+        const roomFromBucket = await this.r2.get(
+          `room/${roomId}/snapshot.json`
+        );
 
         // if it doesn't exist, we'll just create a new empty room
         const initialSnapshot = roomFromBucket
@@ -662,7 +780,27 @@ export class TldrawDurableObject {
 
     // convert the room to JSON and upload it to R2
     const snapshot = JSON.stringify(room.getCurrentSnapshot());
-    await this.r2.put(`room/${this.roomId}.json`, snapshot);
+    await this.r2.put(`room/${this.roomId}/snapshot.json`, snapshot);
+
+    const sessionsFromBucket = await this.r2.get(
+      `room/${this.roomId}/sessions.json`
+    );
+    const sessions = sessionsFromBucket
+      ? await sessionsFromBucket.json<{
+          [id: string]: {
+            username: string;
+            connectedAt: string;
+            disconnectedAt: string;
+          };
+        }>()
+      : {};
+    for (const [id, session] of Object.entries(this.sessions)) {
+      sessions[id] = session;
+      if (!sessions[id].disconnectedAt && !this.sessions[id])
+        sessions[id].disconnectedAt = new Date().toISOString();
+    }
+    const sessionsToBucket = JSON.stringify(sessions);
+    await this.r2.put(`room/${this.roomId}/sessions.json`, sessionsToBucket);
   }, 10_000);
 
   // what happens when someone tries to connect to this room?
@@ -692,22 +830,22 @@ export class TldrawDurableObject {
       return error(400, "Missing pages");
     }
 
-    try {
-      const payload = await new TokenVerifier(
-        this.LIVEKIT_API_KEY,
-        this.LIVEKIT_API_SECRET
-      ).verify(token);
+    const payload = await new TokenVerifier(
+      this.LIVEKIT_API_KEY,
+      this.LIVEKIT_API_SECRET
+    )
+      .verify(token)
+      .catch((err) => {
+        console.error("Invalid token", err);
+        throw error(401, "Invalid token");
+      });
 
-      if (
-        payload.attributes?.nodeId?.split("/").shift() !==
-        roomId.split("/").shift()
-      ) {
-        console.error("Invalid roomId");
-        return error(401, "Invalid roomId");
-      }
-    } catch (err) {
-      console.error("Invalid token", err);
-      return error(401, "Invalid token");
+    if (
+      payload.attributes?.nodeId?.split("/").shift() !==
+      roomId.split("/").shift()
+    ) {
+      console.error("Invalid roomId");
+      return error(401, "Invalid roomId");
     }
 
     // Create the websocket pair for the client
@@ -716,13 +854,10 @@ export class TldrawDurableObject {
 
     // load the room, or retrieve it if it's already loaded
     const room = await this.getStudyRoom();
-    await room.updateStore((store) => {
-      store.delete("page:page");
-    });
 
     // connect the client to the room
     room.handleSocketConnect({
-      sessionId,
+      sessionId: sessionId,
       socket: serverWebSocket,
       isReadonly: (request.query.readonly as string) === "1",
     });
@@ -829,9 +964,7 @@ export class TldrawDurableObject {
         }
       });
     }
-    await room.updateStore((store) => {
-      store.delete("page:page");
-    });
+
     return new Response(null, { status: 200 });
   }
 
@@ -921,7 +1054,6 @@ export class TldrawDurableObject {
       this.roomPromise = (async () => {
         // fetch the room from R2
         const [userId, hash] = roomId.split("/");
-        const snapshot = await this.r2.get(`study/${userId}/${hash}.json`);
         const pageDocuments: RoomSnapshot["documents"] = [];
         for (const id of pageIds) {
           const document = await this.r2.get(`study/${userId}/${id}.json`);
@@ -931,11 +1063,47 @@ export class TldrawDurableObject {
           pageDocuments.push(...documents);
         }
 
-        // if it doesn't exist, we'll just create a new empty room
-        const initialSnapshot =
-          pageDocuments.length > 0
-            ? { clock: 0, snapshot, documents: pageDocuments }
-            : { clock: 0, documents: [] };
+        const snapshotFromBucket = await this.r2.get(
+          `study/${userId}/${hash}.json`
+        );
+        const initialSnapshot: RoomSnapshot = snapshotFromBucket
+          ? await snapshotFromBucket.json<RoomSnapshot>()
+          : { clock: 0, documents: [] };
+        initialSnapshot.clock = 0;
+        initialSnapshot.documents =
+          pageDocuments.length > 0 ? pageDocuments : [];
+        if (pageDocuments.length > 0) initialSnapshot.schema = {
+          schemaVersion: 2,
+          sequences: {
+            "com.tldraw.store": 4,
+            "com.tldraw.asset": 1,
+            "com.tldraw.camera": 1,
+            "com.tldraw.document": 2,
+            "com.tldraw.instance": 25,
+            "com.tldraw.instance_page_state": 5,
+            "com.tldraw.page": 1,
+            "com.tldraw.instance_presence": 6,
+            "com.tldraw.pointer": 1,
+            "com.tldraw.shape": 4,
+            "com.tldraw.asset.bookmark": 2,
+            "com.tldraw.asset.image": 5,
+            "com.tldraw.asset.video": 5,
+            "com.tldraw.shape.arrow": 6,
+            "com.tldraw.shape.bookmark": 2,
+            "com.tldraw.shape.draw": 2,
+            "com.tldraw.shape.embed": 4,
+            "com.tldraw.shape.frame": 1,
+            "com.tldraw.shape.geo": 10,
+            "com.tldraw.shape.group": 0,
+            "com.tldraw.shape.highlight": 1,
+            "com.tldraw.shape.image": 5,
+            "com.tldraw.shape.line": 5,
+            "com.tldraw.shape.note": 9,
+            "com.tldraw.shape.text": 3,
+            "com.tldraw.shape.video": 4,
+            "com.tldraw.binding.arrow": 1,
+          },
+        };
 
         // create a new TLSocketRoom. This handles all the sync protocol & websocket connections.
         // it's up to us to persist the room state to R2 when needed though.
