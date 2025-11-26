@@ -199,11 +199,11 @@ export class TldrawDurableObject {
   // what happens when someone tries to connect to this room?
   async handleConnect(request: IRequest): Promise<Response> {
     // extract query params from request
-    const sessionId = request.query.sessionId as string;
-    if (!sessionId) {
-      console.error("Missing sessionId");
-      return error(400, "Missing sessionId");
-    }
+    // const sessionId = request.query.sessionId as string;
+    // if (!sessionId) {
+    //   console.error("Missing sessionId");
+    //   return error(400, "Missing sessionId");
+    // }
 
     const roomId = this.roomId;
     if (!roomId) {
@@ -250,26 +250,16 @@ export class TldrawDurableObject {
 
     // load the room, or retrieve it if it's already loaded
     const room = await this.getRoom();
-    this.sessions[sub] = {
+    const sessionId = sub.split("/").shift() + "/" + new Date().toISOString();
+    this.sessions[sessionId] = {
       username: name.match(/\d+/g)?.join("") ?? "",
       connectedAt: new Date().toISOString(),
       disconnectedAt: "",
     };
 
-    // const sessionsFromBucket = await this.r2.get(`room/${this.roomId}/sessions.json`);
-    // const sessions = sessionsFromBucket
-    //   ? await sessionsFromBucket.json<{ [id: string]: { username: string; connectedAt: string; disconnectedAt: string } }>()
-    //   : {};
-    // for (const [id, session] of Object.entries(this.sessions)) {
-    //   if (!sessions[id]) sessions[id] = session;
-    //   if (!this.sessions[id]) sessions[id].disconnectedAt = new Date().toISOString();
-    // }
-    // const sessionsToBucket = JSON.stringify(sessions);
-    // await this.r2.put(`room/${this.roomId}/sessions.json`, sessionsToBucket);
-
     // connect the client to the room
     room.handleSocketConnect({
-      sessionId: sub,
+      sessionId: sessionId,
       socket: serverWebSocket,
       isReadonly: (request.query.readonly as string) === "1",
     });
@@ -683,11 +673,13 @@ export class TldrawDurableObject {
       return error(400, "Missing roomId");
     }
 
-    // const token = request.headers.get("Authorization")?.split(" ")[1];
-    // if (!token) {
-    //   console.error("Missing token");
-    //   return error(400, "Missing token");
-    // }
+    const token = request.headers.get("Authorization")?.split(" ")[1];
+    if (!token) {
+      console.error("Missing token");
+      return error(400, "Missing token");
+    }
+
+    const room = await this.getRoom();
 
     const sessionsFromBucket = await this.r2.get(
       `room/${this.roomId}/sessions.json`
@@ -700,36 +692,36 @@ export class TldrawDurableObject {
             disconnectedAt: string;
           };
         }>()
-      : this.sessions;
+      : {};
 
-    const sessionsMap: {
-      [id: string]: {
-        username: string;
-        connectedAt: string;
-        disconnectedAt: string;
-      };
-    } = {};
-    for (const [id, session] of Object.entries(sessions)) {
-      if (!sessionsMap[id]) {
-        sessionsMap[id] = {
-          username: session.username,
-          connectedAt: session.connectedAt,
-          disconnectedAt: session.disconnectedAt,
-        };
-      }
-      if (!sessionsMap[id].disconnectedAt && !this.sessions[id]) {
-        sessionsMap[id].disconnectedAt = new Date().toISOString();
-      }
+    for (const [id, session] of Object.entries(this.sessions)) {
+      if (!sessions[id]) sessions[id] = session;
     }
 
-    const sessionsToReturn = Object.entries(sessionsMap).map(
-      ([id, session]) => ({
-        id: id,
-        username: session.username,
-        connectedAt: session.connectedAt,
-        disconnectedAt: session.disconnectedAt,
-      })
+    const activeSessionIds = new Set(
+      room
+        .getSessions()
+        .map((session) => (session.isConnected ? session.sessionId : null))
+        .filter((id) => id !== null)
     );
+
+    for (const [id, session] of Object.entries(sessions)) {
+      if (session.disconnectedAt || activeSessionIds.has(id)) continue;
+
+      session.disconnectedAt = new Date().toISOString();
+      if (this.sessions[id] && !this.sessions[id].disconnectedAt) {
+        this.sessions[id].disconnectedAt = session.disconnectedAt;
+      }
+    }
+    const sessionsToBucket = JSON.stringify(sessions);
+    await this.r2.put(`room/${this.roomId}/sessions.json`, sessionsToBucket);
+
+    const sessionsToReturn = Object.entries(sessions).map(([id, session]) => ({
+      id: id,
+      username: session.username,
+      connectedAt: session.connectedAt,
+      disconnectedAt: session.disconnectedAt,
+    }));
 
     return new Response(
       JSON.stringify({
@@ -739,6 +731,59 @@ export class TldrawDurableObject {
         status: 200,
       }
     );
+
+    // const sessionsFromBucket = await this.r2.get(
+    //   `room/${this.roomId}/sessions.json`
+    // );
+    // const sessions = sessionsFromBucket
+    //   ? await sessionsFromBucket.json<{
+    //       [id: string]: {
+    //         username: string;
+    //         connectedAt: string;
+    //         disconnectedAt: string;
+    //       };
+    //     }>()
+    //   : this.sessions;
+
+    // const sessionsMap: {
+    //   [id: string]: {
+    //     username: string;
+    //     connectedAt: string;
+    //     disconnectedAt: string;
+    //   };
+    // } = {};
+    // for (const [id, session] of Object.entries(sessions)) {
+    //   if (!sessionsMap[id]) {
+    //     sessionsMap[id] = {
+    //       username: session.username,
+    //       connectedAt: session.connectedAt,
+    //       disconnectedAt: session.disconnectedAt,
+    //     };
+    //   }
+
+    //   if (sessionsMap[id].disconnectedAt) continue;
+    //   if (this.sessions[id]) continue;
+
+    //   sessionsMap[id].disconnectedAt = new Date().toISOString();
+    // }
+
+    // const sessionsToReturn = Object.entries(sessionsMap).map(
+    //   ([id, session]) => ({
+    //     id: id,
+    //     username: session.username,
+    //     connectedAt: session.connectedAt,
+    //     disconnectedAt: session.disconnectedAt,
+    //   })
+    // );
+
+    // return new Response(
+    //   JSON.stringify({
+    //     data: { sessions: sessionsToReturn },
+    //   }),
+    //   {
+    //     status: 200,
+    //   }
+    // );
   }
 
   getRoom() {
@@ -794,10 +839,25 @@ export class TldrawDurableObject {
           };
         }>()
       : {};
+
     for (const [id, session] of Object.entries(this.sessions)) {
-      sessions[id] = session;
-      if (!sessions[id].disconnectedAt && !this.sessions[id])
-        sessions[id].disconnectedAt = new Date().toISOString();
+      if (!sessions[id]) sessions[id] = session;
+    }
+
+    const activeSessionIds = new Set(
+      room
+        .getSessions()
+        .map((session) => (session.isConnected ? session.sessionId : null))
+        .filter((id) => id !== null)
+    );
+
+    for (const [id, session] of Object.entries(sessions)) {
+      if (session.disconnectedAt || activeSessionIds.has(id)) continue;
+
+      session.disconnectedAt = new Date().toISOString();
+      if (this.sessions[id] && !this.sessions[id].disconnectedAt) {
+        this.sessions[id].disconnectedAt = session.disconnectedAt;
+      }
     }
     const sessionsToBucket = JSON.stringify(sessions);
     await this.r2.put(`room/${this.roomId}/sessions.json`, sessionsToBucket);
@@ -1072,38 +1132,39 @@ export class TldrawDurableObject {
         initialSnapshot.clock = 0;
         initialSnapshot.documents =
           pageDocuments.length > 0 ? pageDocuments : [];
-        if (pageDocuments.length > 0) initialSnapshot.schema = {
-          schemaVersion: 2,
-          sequences: {
-            "com.tldraw.store": 4,
-            "com.tldraw.asset": 1,
-            "com.tldraw.camera": 1,
-            "com.tldraw.document": 2,
-            "com.tldraw.instance": 25,
-            "com.tldraw.instance_page_state": 5,
-            "com.tldraw.page": 1,
-            "com.tldraw.instance_presence": 6,
-            "com.tldraw.pointer": 1,
-            "com.tldraw.shape": 4,
-            "com.tldraw.asset.bookmark": 2,
-            "com.tldraw.asset.image": 5,
-            "com.tldraw.asset.video": 5,
-            "com.tldraw.shape.arrow": 6,
-            "com.tldraw.shape.bookmark": 2,
-            "com.tldraw.shape.draw": 2,
-            "com.tldraw.shape.embed": 4,
-            "com.tldraw.shape.frame": 1,
-            "com.tldraw.shape.geo": 10,
-            "com.tldraw.shape.group": 0,
-            "com.tldraw.shape.highlight": 1,
-            "com.tldraw.shape.image": 5,
-            "com.tldraw.shape.line": 5,
-            "com.tldraw.shape.note": 9,
-            "com.tldraw.shape.text": 3,
-            "com.tldraw.shape.video": 4,
-            "com.tldraw.binding.arrow": 1,
-          },
-        };
+        if (pageDocuments.length > 0)
+          initialSnapshot.schema = {
+            schemaVersion: 2,
+            sequences: {
+              "com.tldraw.store": 4,
+              "com.tldraw.asset": 1,
+              "com.tldraw.camera": 1,
+              "com.tldraw.document": 2,
+              "com.tldraw.instance": 25,
+              "com.tldraw.instance_page_state": 5,
+              "com.tldraw.page": 1,
+              "com.tldraw.instance_presence": 6,
+              "com.tldraw.pointer": 1,
+              "com.tldraw.shape": 4,
+              "com.tldraw.asset.bookmark": 2,
+              "com.tldraw.asset.image": 5,
+              "com.tldraw.asset.video": 5,
+              "com.tldraw.shape.arrow": 6,
+              "com.tldraw.shape.bookmark": 2,
+              "com.tldraw.shape.draw": 2,
+              "com.tldraw.shape.embed": 4,
+              "com.tldraw.shape.frame": 1,
+              "com.tldraw.shape.geo": 10,
+              "com.tldraw.shape.group": 0,
+              "com.tldraw.shape.highlight": 1,
+              "com.tldraw.shape.image": 5,
+              "com.tldraw.shape.line": 5,
+              "com.tldraw.shape.note": 9,
+              "com.tldraw.shape.text": 3,
+              "com.tldraw.shape.video": 4,
+              "com.tldraw.binding.arrow": 1,
+            },
+          };
 
         // create a new TLSocketRoom. This handles all the sync protocol & websocket connections.
         // it's up to us to persist the room state to R2 when needed though.
