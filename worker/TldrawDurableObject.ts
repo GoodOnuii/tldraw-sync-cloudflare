@@ -681,47 +681,29 @@ export class TldrawDurableObject {
 
     const room = await this.getRoom();
 
-    const sessionsFromBucket = await this.r2.get(
-      `room/${this.roomId}/sessions.json`
-    );
-    const sessions = sessionsFromBucket
-      ? await sessionsFromBucket.json<{
-          [id: string]: {
-            username: string;
-            connectedAt: string;
-            disconnectedAt: string;
-          };
-        }>()
-      : {};
-
-    for (const [id, session] of Object.entries(this.sessions)) {
-      if (!sessions[id]) sessions[id] = session;
-    }
-
-    const activeSessionIds = new Set(
-      room
-        .getSessions()
-        .map((session) => (session.isConnected ? session.sessionId : null))
-        .filter((id) => id !== null)
-    );
-
-    for (const [id, session] of Object.entries(sessions)) {
-      if (session.disconnectedAt || activeSessionIds.has(id)) continue;
-
-      session.disconnectedAt = new Date().toISOString();
-      if (this.sessions[id] && !this.sessions[id].disconnectedAt) {
-        this.sessions[id].disconnectedAt = session.disconnectedAt;
+    const activeSessionIds = new Set<string>();
+    for (const session of room.getSessions()) {
+      if (session.isConnected && session.sessionId) {
+        activeSessionIds.add(session.sessionId);
       }
     }
-    const sessionsToBucket = JSON.stringify(sessions);
-    await this.r2.put(`room/${this.roomId}/sessions.json`, sessionsToBucket);
 
-    const sessionsToReturn = Object.entries(sessions).map(([id, session]) => ({
-      id: id,
-      username: session.username,
-      connectedAt: session.connectedAt,
-      disconnectedAt: session.disconnectedAt,
-    }));
+    const disconnectedAt = new Date().toISOString();
+    const sessionsToReturn = Object.entries(this.sessions).map(([id, session]) => {
+      if (!session.disconnectedAt && !activeSessionIds.has(id)) {
+        session.disconnectedAt = disconnectedAt;
+        if (this.sessions[id] && !this.sessions[id].disconnectedAt) {
+          this.sessions[id].disconnectedAt = disconnectedAt;
+        }
+      }
+
+      return {
+        id,
+        username: session.username,
+        connectedAt: session.connectedAt,
+        disconnectedAt: session.disconnectedAt,
+      };
+    });
 
     return new Response(
       JSON.stringify({
@@ -731,59 +713,6 @@ export class TldrawDurableObject {
         status: 200,
       }
     );
-
-    // const sessionsFromBucket = await this.r2.get(
-    //   `room/${this.roomId}/sessions.json`
-    // );
-    // const sessions = sessionsFromBucket
-    //   ? await sessionsFromBucket.json<{
-    //       [id: string]: {
-    //         username: string;
-    //         connectedAt: string;
-    //         disconnectedAt: string;
-    //       };
-    //     }>()
-    //   : this.sessions;
-
-    // const sessionsMap: {
-    //   [id: string]: {
-    //     username: string;
-    //     connectedAt: string;
-    //     disconnectedAt: string;
-    //   };
-    // } = {};
-    // for (const [id, session] of Object.entries(sessions)) {
-    //   if (!sessionsMap[id]) {
-    //     sessionsMap[id] = {
-    //       username: session.username,
-    //       connectedAt: session.connectedAt,
-    //       disconnectedAt: session.disconnectedAt,
-    //     };
-    //   }
-
-    //   if (sessionsMap[id].disconnectedAt) continue;
-    //   if (this.sessions[id]) continue;
-
-    //   sessionsMap[id].disconnectedAt = new Date().toISOString();
-    // }
-
-    // const sessionsToReturn = Object.entries(sessionsMap).map(
-    //   ([id, session]) => ({
-    //     id: id,
-    //     username: session.username,
-    //     connectedAt: session.connectedAt,
-    //     disconnectedAt: session.disconnectedAt,
-    //   })
-    // );
-
-    // return new Response(
-    //   JSON.stringify({
-    //     data: { sessions: sessionsToReturn },
-    //   }),
-    //   {
-    //     status: 200,
-    //   }
-    // );
   }
 
   getRoom() {
@@ -801,6 +730,14 @@ export class TldrawDurableObject {
         const initialSnapshot = roomFromBucket
           ? await roomFromBucket.json<RoomSnapshot>()
           : { clock: 0, documents: [] };
+
+        const sessionsFromBucket = await this.r2.get(
+          `room/${this.roomId}/sessions.json`
+        );
+
+        this.sessions = sessionsFromBucket
+          ? await sessionsFromBucket.json()
+          : {};
 
         // create a new TLSocketRoom. This handles all the sync protocol & websocket connections.
         // it's up to us to persist the room state to R2 when needed though.
@@ -827,23 +764,6 @@ export class TldrawDurableObject {
     const snapshot = JSON.stringify(room.getCurrentSnapshot());
     await this.r2.put(`room/${this.roomId}/snapshot.json`, snapshot);
 
-    const sessionsFromBucket = await this.r2.get(
-      `room/${this.roomId}/sessions.json`
-    );
-    const sessions = sessionsFromBucket
-      ? await sessionsFromBucket.json<{
-          [id: string]: {
-            username: string;
-            connectedAt: string;
-            disconnectedAt: string;
-          };
-        }>()
-      : {};
-
-    for (const [id, session] of Object.entries(this.sessions)) {
-      if (!sessions[id]) sessions[id] = session;
-    }
-
     const activeSessionIds = new Set(
       room
         .getSessions()
@@ -851,15 +771,16 @@ export class TldrawDurableObject {
         .filter((id) => id !== null)
     );
 
-    for (const [id, session] of Object.entries(sessions)) {
-      if (session.disconnectedAt || activeSessionIds.has(id)) continue;
-
-      session.disconnectedAt = new Date().toISOString();
-      if (this.sessions[id] && !this.sessions[id].disconnectedAt) {
-        this.sessions[id].disconnectedAt = session.disconnectedAt;
+    const disconnectedAt = new Date().toISOString();
+    Object.entries(this.sessions).map(([id, session]) => {
+      if (!session.disconnectedAt && !activeSessionIds.has(id)) {
+        session.disconnectedAt = disconnectedAt;
+        if (this.sessions[id] && !this.sessions[id].disconnectedAt) {
+          this.sessions[id].disconnectedAt = disconnectedAt;
+        }
       }
-    }
-    const sessionsToBucket = JSON.stringify(sessions);
+    });
+    const sessionsToBucket = JSON.stringify(this.sessions);
     await this.r2.put(`room/${this.roomId}/sessions.json`, sessionsToBucket);
   }, 10_000);
 
