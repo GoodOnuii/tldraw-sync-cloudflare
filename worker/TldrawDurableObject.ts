@@ -679,6 +679,33 @@ export class TldrawDurableObject {
       return error(400, "Missing token");
     }
 
+    const payload = await new TokenVerifier(
+      this.LIVEKIT_API_KEY,
+      this.LIVEKIT_API_SECRET
+    )
+      .verify(token)
+      .catch((err) => {
+        console.error("Invalid token", err);
+        throw error(401, "Invalid token");
+      });
+
+    if (payload.video?.room !== roomId) {
+      console.error("Invalid roomId");
+      return error(401, "Invalid roomId");
+    }
+
+    const sub = payload.sub;
+    if (!sub) {
+      console.error("Missing payload.sub");
+      return error(400, "Missing payload.sub");
+    }
+
+    const name = payload.name;
+    if (!name) {
+      console.error("Missing payload.name");
+      return error(400, "Missing payload.name");
+    }
+
     const room = await this.getRoom();
 
     const activeSessionIds = new Set<string>();
@@ -689,21 +716,23 @@ export class TldrawDurableObject {
     }
 
     const disconnectedAt = new Date().toISOString();
-    const sessionsToReturn = Object.entries(this.sessions).map(([id, session]) => {
-      if (!session.disconnectedAt && !activeSessionIds.has(id)) {
-        session.disconnectedAt = disconnectedAt;
-        if (this.sessions[id] && !this.sessions[id].disconnectedAt) {
-          this.sessions[id].disconnectedAt = disconnectedAt;
+    const sessionsToReturn = Object.entries(this.sessions).map(
+      ([id, session]) => {
+        if (!session.disconnectedAt && !activeSessionIds.has(id)) {
+          session.disconnectedAt = disconnectedAt;
+          if (this.sessions[id] && !this.sessions[id].disconnectedAt) {
+            this.sessions[id].disconnectedAt = disconnectedAt;
+          }
         }
-      }
 
-      return {
-        id,
-        username: session.username,
-        connectedAt: session.connectedAt,
-        disconnectedAt: session.disconnectedAt,
-      };
-    });
+        return {
+          id,
+          username: session.username,
+          connectedAt: session.connectedAt,
+          disconnectedAt: session.disconnectedAt,
+        };
+      }
+    );
 
     return new Response(
       JSON.stringify({

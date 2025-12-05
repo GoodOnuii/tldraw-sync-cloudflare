@@ -2,7 +2,6 @@ name = "canvas-dev"
 main = "worker/worker.ts"
 compatibility_flags = [ "nodejs_compat" ]
 compatibility_date = "2025-05-08"
-route = "canvas-dev.seoltab.co/*"
 
 [observability]
 enabled = true
@@ -25,8 +24,8 @@ new_sqlite_classes = ["TldrawDurableObject"]
 # We store rooms and asset uploads in an R2 bucket
 [[r2_buckets]]
 binding = 'TLDRAW_BUCKET'
-bucket_name = 'canvas-dev-content'
-preview_bucket_name = 'canvas-dev-content'
+bucket_name = 'canvas-dev'
+preview_bucket_name = 'canvas-dev'
 remote = true
 
 [vars]

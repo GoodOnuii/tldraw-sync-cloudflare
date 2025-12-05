@@ -24,5 +24,5 @@ new_sqlite_classes = ["TldrawDurableObject"]
 # We store rooms and asset uploads in an R2 bucket
 [[r2_buckets]]
 binding = 'TLDRAW_BUCKET'
-bucket_name = 'canvas-content'
-preview_bucket_name = 'canvas-content-preview'
+bucket_name = 'canvas'
+preview_bucket_name = 'canvas'

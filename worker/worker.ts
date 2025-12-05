@@ -90,5 +90,76 @@ const router = AutoRouter<IRequest, [env: Environment, ctx: ExecutionContext]>({
 	// bookmarks need to extract metadata from pasted URLs:
 	.get('/unfurl', handleUnfurlRequest)
 
+	.get('/v0/connect/:roomId', (request, env) => {
+		const url = request.url.replace('/v0', '')
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		    return room.fetch(url, { headers: request.headers, body: request.body })
+		}
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(url, { headers: request.headers, body: request.body })
+	})
+	.post('/v0/disconnect/:roomId', (request, env) => {
+		const url = request.url.replace('/v0', '')
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+			return room.fetch(url, { method: 'POST', headers: request.headers, body: request.body })
+		}
+	})
+	.post('/v0/rooms/:roomId', (request, env) => {
+		const url = request.url.replace('/v0', '')
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(url, { method: 'POST', headers: request.headers, body: request.body })
+	})
+	.delete('/v0/rooms/:roomId', (request, env) => {
+		const url = request.url.replace('/v0', '')
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(url, { method: 'DELETE', headers: request.headers, body: request.body })
+	})
+	.get('/v0/rooms/:roomId/pages', (request, env) => {
+		const url = request.url.replace('/v0', '')
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+			return room.fetch(url, { headers: request.headers, body: request.body })
+		}
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(url, { headers: request.headers, body: request.body })
+	})
+	.put('/v0/rooms/:roomId/pages', (request, env) => {
+		const url = request.url.replace('/v0', '')
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+			return room.fetch(url, { method: 'PUT', headers: request.headers, body: request.body })
+		}
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(url, { method: 'PUT', headers: request.headers, body: request.body })
+	})
+	.delete('/v0/rooms/:roomId/pages', (request, env) => {
+		const url = request.url.replace('/v0', '')
+		if (request.query.hash) {
+			const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId + '/' + request.query.hash)
+			const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+			return room.fetch(url, { method: 'DELETE', headers: request.headers, body: request.body })
+		}
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(url, { method: 'DELETE', headers: request.headers, body: request.body })
+	})
+	.get('/v0/rooms/:roomId/sessions', (request, env) => {
+		const url = request.url.replace('/v0', '')
+		const id = env.TLDRAW_DURABLE_OBJECT.idFromName(request.params.roomId)
+		const room = env.TLDRAW_DURABLE_OBJECT.get(id)
+		return room.fetch(url, { headers: request.headers, body: request.body })
+	})
+
 // export our router for cloudflare
 export default router
