@@ -11,6 +11,7 @@ import { Environment } from "./types";
 import { ClaimGrants, TokenVerifier } from "livekit-server-sdk";
 import { PhotonImage } from "@cf-wasm/photon";
 import { getIndicesAbove, sortByIndex, UnknownRecord } from "tldraw";
+import { UUID } from "bson";
 
 // add custom shapes and bindings here if needed:
 const schema = createTLSchema({
@@ -140,6 +141,15 @@ export class TldrawDurableObject {
         });
       }
       return this.handleGetPages(request);
+    })
+    .post("/rooms/:roomId/pages", async (request) => {
+      if (!this.roomId) {
+        await this.ctx.blockConcurrencyWhile(async () => {
+          await this.ctx.storage.put("roomId", request.params.roomId);
+          this.roomId = request.params.roomId;
+        });
+      }
+      return this.handlePostPages(request);
     })
     .put("/rooms/:roomId/pages", async (request) => {
       if (request.query.hash) {
@@ -349,6 +359,255 @@ export class TldrawDurableObject {
         id: document.state.id.split(":")[1],
       }));
     return new Response(JSON.stringify({ pages: pages }), { status: 200 });
+  }
+
+  async handlePostPages(request: IRequest): Promise<Response> {
+    const roomId = this.roomId;
+    if (!roomId) {
+      console.error("Missing roomId");
+      return error(400, "Missing roomId");
+    }
+
+    const body = await request.json<any>();
+    if (
+      !body ||
+      !body.input ||
+      !body.input.pages ||
+      !Array.isArray(body.input.pages)
+    ) {
+      console.error("Missing pages");
+      return error(400, "Missing pages");
+    }
+
+    const token = request.headers.get("Authorization")?.split(" ")[1];
+    if (!token) {
+      console.error("Missing token");
+      return error(400, "Missing token");
+    }
+
+    let payload: ClaimGrants;
+    try {
+      payload = await new TokenVerifier(
+        this.LIVEKIT_API_KEY,
+        this.LIVEKIT_API_SECRET
+      ).verify(token);
+
+      if (payload.video?.room !== roomId) {
+        console.error("Invalid roomId");
+        return error(401, "Invalid roomId");
+      }
+    } catch (err) {
+      console.error("Invalid token", err);
+      return error(401, "Invalid token");
+    }
+
+    const nodeId = payload.attributes?.nodeId;
+    if (!nodeId) {
+      console.error("Missing nodeId");
+      return error(400, "Missing nodeId");
+    }
+
+    const room = await this.getRoom();
+    const snapshot = room.getCurrentSnapshot();
+    const pageDocuments = snapshot.documents.filter((document) => {
+      const state = document.state as any;
+      return state.typeName === "page";
+    });
+    const sortedPageDocuments = pageDocuments.sort((a: any, b: any) =>
+      sortByIndex(a.state, b.state)
+    );
+    const lastPageDocument =
+      sortedPageDocuments.length > 0
+        ? sortedPageDocuments[sortedPageDocuments.length - 1]
+        : { state: { index: "a1" } };
+    const lastPageState = lastPageDocument.state as any;
+    const aboveIndices = getIndicesAbove(
+      lastPageState.index,
+      body.input.pages.length
+    );
+
+    const pages: RoomSnapshot["documents"] = [];
+    const pageFromDocuments: {
+      lastChangedClock: number;
+      state: any;
+    }[] = [];
+    const errors: {
+      message: string;
+      extensions: { id: string; image: string; thumbnail?: string };
+    }[] = [];
+    const pagePromises = body.input.pages.map(
+      async (
+        page: {
+          id?: string;
+          index?: number;
+          image?: string;
+          thumbnail?: string;
+          width?: number;
+          height?: number;
+          mimeType?: string;
+        },
+        pageIndex: number
+      ) => {
+        const pageId = typeof page.id === "string" ? page.id : new UUID().toString();
+
+        const index = aboveIndices[pageIndex];
+        if (!index) return;
+
+        // const pageDocument = pageDocuments.find(
+        //   (document) => document.state.id === `page:${page.id}`
+        // );
+        // if (pageDocument) {
+        //   const state = pageDocument.state as any;
+        //   state.index = index;
+        //   return;
+        // }
+
+        const pageFromBucket = await this.r2.get(
+          `study/${nodeId}/${pageId}.json`
+        );
+        if (pageFromBucket) {
+          const documents = await pageFromBucket.json<
+            RoomSnapshot["documents"]
+          >();
+          return documents.map((document) => {
+            const state = document.state as any;
+            if (state.typeName === "page") state.index = index;
+            return document;
+          });
+        } else if (page.image) {
+          // const pageDocument = pageDocuments.find(
+          //   (document) => document.state.id === `page:${pageId}`
+          // );
+          // if (pageDocument) {
+          //   const state = pageDocument.state as any;
+          //   state.index = index;
+          //   return [pageDocument];
+          // }
+
+          try {
+            let w = 0;
+            let h = 0;
+            let mimeType = "";
+            if (page.width && page.height && page.mimeType) {
+              w = page.width;
+              h = page.height;
+              mimeType = page.mimeType;
+            } else {
+              const inputBytes = await fetch(page.image)
+                .then((res) => res.arrayBuffer())
+                .then((buffer) => new Uint8Array(buffer));
+              const inputImage = PhotonImage.new_from_byteslice(inputBytes);
+              w = inputImage.get_width();
+              h = inputImage.get_height();
+              const base64 = inputImage.get_base64();
+              inputImage.free();
+              const match = base64.match(/^data:([^;]+)/);
+              if (!match) return;
+              mimeType = match[1];
+            }
+
+            return [
+              {
+                state: {
+                  meta: {
+                    thumbnail: page.thumbnail ? page.thumbnail : page.image,
+                  },
+                  id: `page:${pageId}`,
+                  name: `${pageId}`,
+                  index: index,
+                  typeName: "page",
+                },
+                lastChangedClock: 0,
+              },
+              {
+                state: {
+                  id: `asset:${pageId}`,
+                  type: "image",
+                  typeName: "asset",
+                  props: {
+                    name: `${pageId}`,
+                    src: `${page.image}`,
+                    w: w,
+                    h: h,
+                    mimeType: mimeType,
+                    isAnimated: false,
+                  },
+                  meta: {},
+                },
+                lastChangedClock: 0,
+              },
+              {
+                state: {
+                  x: 0,
+                  y: 0,
+                  rotation: 0,
+                  isLocked: true,
+                  opacity: 1,
+                  meta: {},
+                  id: `shape:${pageId}`,
+                  type: "image",
+                  typeName: "shape",
+                  index: "a1",
+                  parentId: `page:${pageId}`,
+                  props: {
+                    w: w,
+                    h: h,
+                    assetId: `asset:${pageId}`,
+                    playing: true,
+                    url: "",
+                    crop: null,
+                    flipX: false,
+                    flipY: false,
+                    altText: "",
+                  },
+                },
+                lastChangedClock: 0,
+              },
+            ];
+          } catch (err) {
+            throw {
+              message: `${err}`,
+              extensions: {
+                id: pageId,
+                image: page.image,
+                thumbnail: page.thumbnail,
+              },
+            };
+          }
+        }
+      }
+    );
+
+    const results = await Promise.allSettled(pagePromises);
+
+    results.forEach((result) => {
+      if (result.status === "fulfilled" && result.value) {
+        pageFromDocuments.push(...result.value);
+      } else if (result.status === "rejected") {
+        errors.push(result.reason);
+      }
+    });
+
+    await room.updateStore((store) => {
+      for (const document of pageFromDocuments) {
+        store.put(document.state as TLRecord);
+        if (document.state.typeName === "page") pages.push(document);
+      }
+    });
+
+    const sortedPages = pages.map((document) => ({
+      ...document,
+      id: document.state.id.split(":")[1],
+    }));
+    return new Response(
+      JSON.stringify({
+        data: { pages: sortedPages },
+        errors: errors.length ? errors : undefined,
+      }),
+      {
+        status: 200,
+      }
+    );
   }
 
   async handlePutPages(request: IRequest): Promise<Response> {
