@@ -3,8 +3,8 @@ import { error, IRequest } from "itty-router";
 import { Environment } from "./types";
 
 // assets are stored in the bucket under the /uploads path
-function getAssetObjectName(uploadId: string) {
-  return `upload/${uploadId.replace(/[^a-zA-Z0-9_-]+/g, "_")}`;
+function getAssetObjectName(roomId: string, uploadId: string) {
+  return `upload/${roomId}/${uploadId.replace(/[^a-zA-Z0-9_-]+/g, "_")}`;
 }
 
 declare global {
@@ -16,7 +16,7 @@ declare global {
 // when a user uploads an asset, we store it in the bucket. we only allow image and video assets.
 export async function handleAssetUpload(request: IRequest, env: Environment) {
   const uploadId = new UUID().toString();
-  const objectName = getAssetObjectName(uploadId);
+  const objectName = getAssetObjectName(request.params.roomId, uploadId);
 
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.startsWith("image/") && !contentType.startsWith("video/")) {
@@ -40,7 +40,7 @@ export async function handleAssetDownload(
   env: Environment,
   ctx: ExecutionContext
 ) {
-  const objectName = getAssetObjectName(request.params.uploadId);
+  const objectName = getAssetObjectName(request.params.roomId, request.params.uploadId);
 
   // if we have a cached response for this request (automatically handling ranges etc.), return it
   const cacheKey = new Request(request.url, { headers: request.headers });
