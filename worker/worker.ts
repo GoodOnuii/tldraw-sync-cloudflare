@@ -137,10 +137,10 @@ const router = AutoRouter<IRequest, [env: Environment, ctx: ExecutionContext]>({
   })
 
   // assets can be uploaded to the bucket under /uploads:
-  .post("/uploads/:roomId", handleAssetUpload)
+  .post("/rooms/:roomId/uploads", handleAssetUpload)
 
   // they can be retrieved from the bucket too:
-  .get("/uploads/:roomId/:uploadId", handleAssetDownload)
+  .get("/rooms/:roomId/uploads/:uploadId", handleAssetDownload)
 
   // bookmarks need to extract metadata from pasted URLs:
   .get("/unfurl", handleUnfurlRequest)
@@ -267,10 +267,10 @@ const router = AutoRouter<IRequest, [env: Environment, ctx: ExecutionContext]>({
   })
 
   // assets can be uploaded to the bucket under /uploads:
-  .post("/v0/uploads/:roomId", handleAssetUpload)
+  .post("/v0/rooms/:roomId/uploads", handleAssetUpload)
 
   // they can be retrieved from the bucket too:
-  .get("/v0/uploads/:roomId/:uploadId", handleAssetDownload)
+  .get("/v0/rooms/:roomId/uploads/:uploadId", handleAssetDownload)
 
   // bookmarks need to extract metadata from pasted URLs:
   .get("/v0/unfurl", handleUnfurlRequest);

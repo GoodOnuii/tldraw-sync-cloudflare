@@ -4,7 +4,7 @@ import { Environment } from "./types";
 
 // assets are stored in the bucket under the /uploads path
 function getAssetObjectName(roomId: string, uploadId: string) {
-  return `upload/${roomId}/${uploadId.replace(/[^a-zA-Z0-9_-]+/g, "_")}`;
+  return `room/${roomId}/${uploadId.replace(/[^a-zA-Z0-9_-]+/g, "_")}`;
 }
 
 declare global {
