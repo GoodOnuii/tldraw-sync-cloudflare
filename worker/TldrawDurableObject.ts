@@ -379,33 +379,53 @@ export class TldrawDurableObject {
       return error(400, "Missing pages");
     }
 
-    const token = request.headers.get("Authorization")?.split(" ")[1];
+    const authorization = request.headers.get("Authorization") ?? "";
+    if (
+      !authorization.startsWith("Basic") &&
+      !authorization.startsWith("Bearer")
+    ) {
+      console.error("Invalid authorization type");
+      return error(401, "Invalid authorization type");
+    }
+
+    const token = authorization.split(" ")[1];
     if (!token) {
       console.error("Missing token");
       return error(400, "Missing token");
     }
 
-    let payload: ClaimGrants;
+    let payload: ClaimGrants | null = null;
     try {
       payload = await new TokenVerifier(
         this.LIVEKIT_API_KEY,
         this.LIVEKIT_API_SECRET
-      ).verify(token);
+      )
+        .verify(token)
+        .catch((err) => {
+          console.error("Invalid token", err);
+          throw error(401, "Invalid token");
+        });
 
       if (payload.video?.room !== roomId) {
         console.error("Invalid roomId");
         return error(401, "Invalid roomId");
       }
-    } catch (err) {
-      console.error("Invalid token", err);
-      return error(401, "Invalid token");
-    }
+    } catch {
+      try {
+        const [key, secret] = atob(token).toString().split(":");
 
-    const nodeId = payload.attributes?.nodeId;
-    if (!nodeId) {
-      console.error("Missing nodeId");
-      return error(400, "Missing nodeId");
+        if (
+          key !== this.LIVEKIT_API_KEY ||
+          secret !== this.LIVEKIT_API_SECRET
+        ) {
+          throw new Error("Invalid token");
+        }
+      } catch {
+        console.error("Invalid token");
+        return error(401, "Invalid token");
+      }
     }
+    const nodeId = payload?.attributes?.nodeId;
 
     const room = await this.getRoom();
     const snapshot = room.getCurrentSnapshot();
@@ -448,42 +468,29 @@ export class TldrawDurableObject {
         },
         pageIndex: number
       ) => {
-        const pageId = typeof page.id === "string" ? page.id : new UUID().toString();
+        const pageId =
+          typeof page.id === "string" ? page.id : new UUID().toString();
 
         const index = aboveIndices[pageIndex];
         if (!index) return;
 
-        // const pageDocument = pageDocuments.find(
-        //   (document) => document.state.id === `page:${page.id}`
-        // );
-        // if (pageDocument) {
-        //   const state = pageDocument.state as any;
-        //   state.index = index;
-        //   return;
-        // }
+        if (nodeId && pageId) {
+          const pageFromBucket = await this.r2.get(
+            `study/${nodeId}/${pageId}.json`
+          );
+          if (pageFromBucket) {
+            const documents = await pageFromBucket.json<
+              RoomSnapshot["documents"]
+            >();
+            return documents.map((document) => {
+              const state = document.state as any;
+              if (state.typeName === "page") state.index = index;
+              return document;
+            });
+          }
+        }
 
-        const pageFromBucket = await this.r2.get(
-          `study/${nodeId}/${pageId}.json`
-        );
-        if (pageFromBucket) {
-          const documents = await pageFromBucket.json<
-            RoomSnapshot["documents"]
-          >();
-          return documents.map((document) => {
-            const state = document.state as any;
-            if (state.typeName === "page") state.index = index;
-            return document;
-          });
-        } else if (page.image) {
-          // const pageDocument = pageDocuments.find(
-          //   (document) => document.state.id === `page:${pageId}`
-          // );
-          // if (pageDocument) {
-          //   const state = pageDocument.state as any;
-          //   state.index = index;
-          //   return [pageDocument];
-          // }
-
+        if (page.image) {
           try {
             let w = 0;
             let h = 0;
@@ -932,37 +939,50 @@ export class TldrawDurableObject {
       return error(400, "Missing roomId");
     }
 
-    const token = request.headers.get("Authorization")?.split(" ")[1];
+    const authorization = request.headers.get("Authorization") ?? "";
+    if (
+      !authorization.startsWith("Basic") &&
+      !authorization.startsWith("Bearer")
+    ) {
+      console.error("Invalid authorization type");
+      return error(401, "Invalid authorization type");
+    }
+
+    const token = authorization.split(" ")[1];
     if (!token) {
       console.error("Missing token");
       return error(400, "Missing token");
     }
 
-    const payload = await new TokenVerifier(
-      this.LIVEKIT_API_KEY,
-      this.LIVEKIT_API_SECRET
-    )
-      .verify(token)
-      .catch((err) => {
-        console.error("Invalid token", err);
-        throw error(401, "Invalid token");
-      });
+    try {
+      const payload = await new TokenVerifier(
+        this.LIVEKIT_API_KEY,
+        this.LIVEKIT_API_SECRET
+      )
+        .verify(token)
+        .catch((err) => {
+          console.error("Invalid token", err);
+          throw error(401, "Invalid token");
+        });
 
-    if (payload.video?.room !== roomId) {
-      console.error("Invalid roomId");
-      return error(401, "Invalid roomId");
-    }
+      if (payload.video?.room !== roomId) {
+        console.error("Invalid roomId");
+        return error(401, "Invalid roomId");
+      }
+    } catch {
+      try {
+        const [key, secret] = atob(token).toString().split(":");
 
-    const sub = payload.sub;
-    if (!sub) {
-      console.error("Missing payload.sub");
-      return error(400, "Missing payload.sub");
-    }
-
-    const name = payload.name;
-    if (!name) {
-      console.error("Missing payload.name");
-      return error(400, "Missing payload.name");
+        if (
+          key !== this.LIVEKIT_API_KEY ||
+          secret !== this.LIVEKIT_API_SECRET
+        ) {
+          throw new Error("Invalid token");
+        }
+      } catch {
+        console.error("Invalid token");
+        return error(401, "Invalid token");
+      }
     }
 
     const room = await this.getRoom();
