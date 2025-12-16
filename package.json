@@ -21,20 +21,25 @@
 	},
 	"dependencies": {
 		"@cf-wasm/photon": "^0.1.31",
+		"@cf-wasm/png": "^0.3.2",
 		"@cloudflare/types": "^6.29.0",
+		"@pdf-lib/upng": "^1.0.1",
 		"@tldraw/indices": "2.0.0-canary.e43b0103fdf5",
 		"@tldraw/sync": "3.15.4",
 		"@tldraw/sync-core": "3.15.4",
 		"@tldraw/tlschema": "3.15.4",
 		"bson": "^6.10.4",
 		"cloudflare-workers-unfurl": "^0.0.7",
+		"fast-png": "^7.0.1",
 		"itty-router": "^5.0.17",
+		"jimp": "^1.6.0",
 		"jose": "^6.0.11",
 		"livekit-server-sdk": "^2.13.1",
 		"lodash.throttle": "^4.1.1",
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",
-		"tldraw": "3.15.4"
+		"tldraw": "3.15.4",
+		"unpdf": "^1.4.0"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20250510.0",
