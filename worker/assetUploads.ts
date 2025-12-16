@@ -1,8 +1,6 @@
 import { UUID } from "bson";
 import { error, IRequest } from "itty-router";
 import { Environment } from "./types";
-import { extractImages, getResolvedPDFJS } from "unpdf";
-import { ColorType, encode } from "@cf-wasm/png";
 
 // assets are stored in the bucket under the /uploads path
 function getAssetObjectName(roomId: string, uploadId: string) {
@@ -17,66 +15,11 @@ declare global {
 
 // when a user uploads an asset, we store it in the bucket. we only allow image and video assets.
 export async function handleAssetUpload(request: IRequest, env: Environment) {
-  const contentType = request.headers.get("content-type") ?? "";
-
-  if (contentType.startsWith("application/pdf")) {
-    const uploads = [];
-
-    const file = await request.arrayBuffer();
-
-    const { getDocument } = await getResolvedPDFJS();
-    const document = await getDocument(file).promise;
-
-    const images = [];
-    const numPages = document.numPages;
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      const imagesData = await extractImages(document, pageNum);
-
-      for await (const imgData of imagesData) {
-        const image = encode(
-          new Uint8Array(imgData.data),
-          imgData.width,
-          imgData.height,
-          {
-            color:
-              imgData.channels === 1
-                ? ColorType.Grayscale
-                : imgData.channels === 3
-                ? ColorType.RGB
-                : ColorType.RGBA,
-            palette: new Uint8Array().fill(
-              255,
-              0,
-              imgData.width * imgData.height * imgData.channels
-            ),
-          }
-        );
-        console.log(image.buffer);
-        return new Response(image.buffer, {
-          headers: {
-            "Content-Type": "image/png",
-          },
-        });
-      }
-    }
-
-    const uploadId = new UUID().toString();
-    const objectName = getAssetObjectName(request.params.roomId, uploadId);
-
-    // You should now put `png` instead of `request.body` in the upload logic below.
-    // await env.TLDRAW_BUCKET.put(objectName, request.body, {
-    //   httpMetadata: request.headers,
-    // });
-
-    uploads.push({ id: uploadId });
-
-    return { ok: true, data: { uploads: uploads } };
-  }
-
   const uploadId = new UUID().toString();
   const objectName = getAssetObjectName(request.params.roomId, uploadId);
 
-  if (!contentType.startsWith("image/")) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.startsWith("image/") && !contentType.startsWith("video/")) {
     return error(400, "Invalid content type");
   }
 
@@ -97,10 +40,7 @@ export async function handleAssetDownload(
   env: Environment,
   ctx: ExecutionContext
 ) {
-  const objectName = getAssetObjectName(
-    request.params.roomId,
-    request.params.uploadId
-  );
+  const objectName = getAssetObjectName(request.params.roomId, request.params.uploadId);
 
   // if we have a cached response for this request (automatically handling ranges etc.), return it
   const cacheKey = new Request(request.url, { headers: request.headers });
